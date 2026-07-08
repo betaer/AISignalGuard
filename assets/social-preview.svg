@@ -22,7 +22,7 @@
     <circle cx="140" cy="120" r="8" fill="#d95745"/>
     <circle cx="168" cy="120" r="8" fill="#d4a94d"/>
     <circle cx="196" cy="120" r="8" fill="#6ca878"/>
-    <text x="238" y="127" fill="#8f8f87" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">betaer.github.io/AISignal</text>
+    <text x="238" y="127" fill="#8f8f87" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">betaer.github.io/AISignalGuard</text>
 
     <g transform="translate(148 212)">
       <text x="0" y="0" fill="#8f8f87" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" letter-spacing="4">CLIENT-SIDE AI SIGNAL CHECKER</text>

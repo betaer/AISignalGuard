@@ -2,7 +2,7 @@
   "use strict";
 
   var RING_CIRCUMFERENCE = 326.726;
-  var REPO = "betaer/AISignal";
+  var REPO = "betaer/AISignalGuard";
   var NAV = [
     ["sec-score", "信任分"],
     ["sec-ip", "出口 IP"],
@@ -1822,8 +1822,8 @@
       "网络连通：" + networkShareStatus(),
       "AI 路径：" + aiPathShareStatus(),
       "",
-      "在线检测：https://betaer.github.io/AISignal/",
-      "开源仓库：https://github.com/betaer/AISignal"
+      "在线检测：https://betaer.github.io/AISignalGuard/",
+      "开源仓库：https://github.com/betaer/AISignalGuard"
     ].join("\n");
   }
 

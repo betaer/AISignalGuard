@@ -3,7 +3,7 @@
 ## 必做
 
 - [ ] Settings -> General -> Social preview：上传 `assets/social-preview.png`。
-- [ ] About -> Website：填写 `https://betaer.github.io/AISignal/`。
+- [ ] About -> Website：填写 `https://betaer.github.io/AISignalGuard/`。
 - [ ] About -> Description：填写 `Client-side browser and network signal analyzer for AI services.`。
 - [ ] About -> Topics：填入 README 中列出的 topics。
 - [ ] Releases：创建 `v1.0.0`，正文使用 `docs/release-v1.0.0.md`。

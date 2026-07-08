@@ -24,7 +24,7 @@ Description:
 
 Website:
 
-> https://betaer.github.io/AISignal/
+> https://betaer.github.io/AISignalGuard/
 
 Topics:
 
@@ -70,8 +70,8 @@ The page runs as a static client-side app. It groups the browser-visible signals
 
 There is no backend owned by this project. Some checks call third-party IP, DNS, STUN and status APIs, and the privacy panel lists those boundaries. The “copy diagnostic summary” button intentionally excludes IPs, DNS resolver addresses, organizations and fingerprint values so users can share a safe summary when asking for help.
 
-Repo: https://github.com/betaer/AISignal
-Demo: https://betaer.github.io/AISignal/
+Repo: https://github.com/betaer/AISignalGuard
+Demo: https://betaer.github.io/AISignalGuard/
 ```
 
 ## V2EX
@@ -100,8 +100,8 @@ Demo: https://betaer.github.io/AISignal/
 
 项目是纯静态页面，GitHub Pages 直接托管，没有自建后端。部分联网检测会访问第三方 IP、DNS、STUN 和状态 API，页面里写了隐私边界。
 
-在线体验：https://betaer.github.io/AISignal/
-GitHub：https://github.com/betaer/AISignal
+在线体验：https://betaer.github.io/AISignalGuard/
+GitHub：https://github.com/betaer/AISignalGuard
 
 欢迎提 issue，尤其是不同网络环境下 DNS/WebRTC/AI 路径的误判样本。
 ```
@@ -121,8 +121,8 @@ It is a client-side browser/network signal checker for AI services:
 - Cloudflare path checks for ChatGPT, Claude, OpenAI and Perplexity
 - privacy-safe diagnostic summary
 
-Demo: https://betaer.github.io/AISignal/
-GitHub: https://github.com/betaer/AISignal
+Demo: https://betaer.github.io/AISignalGuard/
+GitHub: https://github.com/betaer/AISignalGuard
 ```
 
 中文短帖：
@@ -138,8 +138,8 @@ GitHub: https://github.com/betaer/AISignal
 - ChatGPT / Claude / OpenAI / Perplexity 的 AI 路径
 - 隐私模式 + 不含敏感值的诊断摘要
 
-体验：https://betaer.github.io/AISignal/
-GitHub：https://github.com/betaer/AISignal
+体验：https://betaer.github.io/AISignalGuard/
+GitHub：https://github.com/betaer/AISignalGuard
 ```
 
 ## 20 秒 Demo 脚本

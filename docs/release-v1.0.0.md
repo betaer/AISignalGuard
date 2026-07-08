@@ -19,11 +19,11 @@
 
 ## 在线体验
 
-https://betaer.github.io/AISignal/
+https://betaer.github.io/AISignalGuard/
 
 ## 仓库
 
-https://github.com/betaer/AISignal
+https://github.com/betaer/AISignalGuard
 
 ## 隐私边界
 
