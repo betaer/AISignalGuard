@@ -460,7 +460,7 @@ input:focus-visible {
   left: 50%;
   z-index: 20;
   display: none;
-  width: 246px;
+  width: 276px;
   border: 1px solid var(--line-2);
   border-radius: 8px;
   background: #fff;
@@ -1793,7 +1793,7 @@ input:focus-visible {
   }
 
   .score-metric-tip {
-    width: min(246px, 72vw);
+    width: min(276px, 76vw);
   }
 
   .score-metric.is-right .score-metric-tip,

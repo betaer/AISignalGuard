@@ -2087,6 +2087,16 @@
     return "检测中";
   }
 
+  function segmentPenaltyText(segment) {
+    if (segment.status === "pending") {
+      return "待判定 · 上限 " + segment.max + " 分";
+    }
+    if (segment.penalty > 0) {
+      return "已扣 " + segment.penalty + " 分 · 上限 " + segment.max + " 分";
+    }
+    return "未扣分 · 上限 " + segment.max + " 分";
+  }
+
   function scoreProgressClass(score, hasRows) {
     return hasRows ? scoreKey(score) : "pending";
   }
@@ -2178,7 +2188,7 @@
         "px;top:" +
         y.toFixed(1) +
         'px" aria-label="' +
-        escapeHtml(segment.name + "：" + segmentStatusText(segment) + "，扣 " + segment.penalty + "/" + segment.max + " 分") +
+        escapeHtml(segment.name + "：" + segmentStatusText(segment) + "，" + segmentPenaltyText(segment)) +
         '">' +
         '<span class="score-metric-label">' +
         escapeHtml(segment.label) +
@@ -2187,8 +2197,8 @@
         escapeHtml(segment.name) +
         '</strong><span class="score-tip-meta">状态：' +
         escapeHtml(segmentStatusText(segment)) +
-        " · 扣分：" +
-        escapeHtml(segment.penalty + "/" + segment.max) +
+        " · " +
+        escapeHtml(segmentPenaltyText(segment)) +
         '</span><span class="score-tip-detail">' +
         renderScoreTipDetail(segment.detail) +
         "</span></span></button>"
