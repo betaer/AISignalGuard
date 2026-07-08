@@ -29,6 +29,11 @@
     activeId: "sec-score",
     score: 0,
     displayScore: 0,
+    renderPaused: false,
+    renderScheduled: false,
+    renderToken: 0,
+    runId: 0,
+    analyticsLoaded: false,
     panels: {
       rules: false,
       privacy: false
@@ -266,7 +271,23 @@
       patch
     );
     recompute();
-    render();
+    if (!state.renderPaused) {
+      render();
+    }
+  }
+
+  function withBatchedRender(fn, immediate) {
+    state.renderPaused = true;
+    try {
+      fn();
+    } finally {
+      state.renderPaused = false;
+      if (immediate) {
+        renderImmediate();
+      } else {
+        render();
+      }
+    }
   }
 
   function setPendingRows() {
@@ -282,8 +303,11 @@
     ].forEach(function (id) {
       state.rows[id] = {
         status: "pending",
-        value: id === "dns" ? "点按钮运行检测" : "检测中…",
-        detail: "正在读取信号…",
+        value: id === "dns" ? "等待自动检测…" : "检测中…",
+        detail:
+          id === "dns"
+            ? "页面稳定后会自动执行标准检测，也可以手动点击标准检测。"
+            : "正在读取信号…",
         tag: "",
         advice: advice[id] || ""
       };
@@ -501,53 +525,54 @@
     };
   }
 
-  function runLocalSignals() {
-    var languages = Array.from(navigator.languages || [navigator.language || ""]);
-    var languageFlag = languageRisk(languages);
-    setRow("lang", {
-      status: languageFlag ? "amber" : "green",
-      value: languages.filter(Boolean).join(" · ") || "未知",
-      detail:
-        "浏览器会把首选语言发送给大部分网站。当前采用 AI Signal 兼容口径：" +
-        regionLabel() +
-        "。语言不一定代表真实地区，但它和出口 IP、账号资料不一致时，会成为画像矛盾。"
-    });
+  function runLocalSignals(immediate) {
+    withBatchedRender(function () {
+      var languages = Array.from(navigator.languages || [navigator.language || ""]);
+      var languageFlag = languageRisk(languages);
+      setRow("lang", {
+        status: languageFlag ? "amber" : "green",
+        value: languages.filter(Boolean).join(" · ") || "未知",
+        detail:
+          "浏览器会把首选语言发送给大部分网站。当前采用 AI Signal 兼容口径：" +
+          regionLabel() +
+          "。语言不一定代表真实地区，但它和出口 IP、账号资料不一致时，会成为画像矛盾。"
+      });
 
-    var timeZone = "未知";
-    try {
-      timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "未知";
-    } catch (err) {
-      timeZone = "未知";
-    }
-    var tzFlag = isChinaTimezone(timeZone);
-    setRow("tz", {
-      status: tzFlag ? "amber" : "green",
-      value: timeZone,
-      detail:
-        "网页可以读取系统时区。已兼容旧 tzdata 别名（PRC / Hongkong / ROC）和无法读取时区时的 UTC+8 回退。若出口 IP 在境外，但时区仍指向当前中国口径内地区，风控会看到明显矛盾。"
-    });
+      var timeZone = "未知";
+      try {
+        timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "未知";
+      } catch (err) {
+        timeZone = "未知";
+      }
+      var tzFlag = isChinaTimezone(timeZone);
+      setRow("tz", {
+        status: tzFlag ? "amber" : "green",
+        value: timeZone,
+        detail:
+          "网页可以读取系统时区。已兼容旧 tzdata 别名（PRC / Hongkong / ROC）和无法读取时区时的 UTC+8 回退。若出口 IP 在境外，但时区仍指向当前中国口径内地区，风控会看到明显矛盾。"
+      });
 
-    var emoji = detectEmoji();
-    setRow("emoji", {
-      status: emoji.flag === true ? "amber" : emoji.flag === null ? "pending" : "green",
-      value: emoji.value,
-      detail:
-        "AI Signal 兼容逻辑会先用 😀 确认彩色 Emoji 可用，再看 🇹🇼 是否被渲染为黑白字母或完全不渲染。Windows 不适用，Canvas 被保护时也不误报。\n" +
-        emoji.detail
-    });
+      var emoji = detectEmoji();
+      setRow("emoji", {
+        status: emoji.flag === true ? "amber" : emoji.flag === null ? "pending" : "green",
+        value: emoji.value,
+        detail:
+          "AI Signal 兼容逻辑会先用 😀 确认彩色 Emoji 可用，再看 🇹🇼 是否被渲染为黑白字母或完全不渲染。Windows 不适用，Canvas 被保护时也不误报。\n" +
+          emoji.detail
+      });
 
-    var fonts = detectFonts();
-    var fontGroups = compactFontHits(fonts.hit);
-    setRow("font", {
-      status: fonts.hit.length ? "amber" : "green",
-      value: fontGroups.labels.length ? "检测到：" + fontGroups.labels.join(" · ") : "未检测到候选中文字体",
-      detail:
-        fontGroups.detail +
-        "\n字体探测通过文字宽度差异判断本机是否存在候选字体，并把同类字体合并显示；未命中的候选字体不会列出。中文字体不是风险本身，但黑体类和宋体类是大陆系统常见弱来源信号。"
-    });
+      var fonts = detectFonts();
+      var fontGroups = compactFontHits(fonts.hit);
+      setRow("font", {
+        status: fonts.hit.length ? "amber" : "green",
+        value: fontGroups.labels.length ? "检测到：" + fontGroups.labels.join(" · ") : "未检测到候选中文字体",
+        detail:
+          fontGroups.detail +
+          "\n字体探测通过文字宽度差异判断本机是否存在候选字体，并把同类字体合并显示；未命中的候选字体不会列出。中文字体不是风险本身，但黑体类和宋体类是大陆系统常见弱来源信号。"
+      });
 
-    state.fp = collectFingerprint();
-    render();
+      state.fp = collectFingerprint();
+    }, immediate);
     updateAudioFingerprint();
   }
 
@@ -913,54 +938,102 @@
         });
       }
     ];
-    collectSuccessful(sources)
-      .then(function (results) {
-        var ipResults = uniqueIpResults(results);
-        var result = ipResults[0] || results[0];
-        if (!result || !result.ok || !result.ip) {
-          throw new Error("empty result");
-        }
-        state.myIp = result.ip || "";
-        state.exitIps = ipResults;
-        var orgText = [result.org, result.asn].join(" ");
-        var hasGeo = Boolean(result.cc || (result.country && result.country !== "未知"));
-        var cn = isChinaCountry(result.cc);
-        var host = isHostingOrg(orgText);
-        var status = !hasGeo ? "amber" : cn ? "red" : host ? "amber" : "green";
-        var value =
-          ipResults.length > 1
-            ? ipResults
-                .map(function (item) {
-                  return ipVersionLabel(item.ip) + " " + item.ip;
-                })
-                .join(" · ")
-            : [result.ip, result.cc || result.country, result.org].filter(Boolean).join(" · ");
-        setRow("ip", {
-          status: status,
-          value: value,
-          tag: result.source,
-          country: result.cc,
-          isCN: cn,
-          host: host,
-          ip: result.ip,
-          ips: ipResults.map(function (item) {
-            return item.ip;
-          }),
-          org: result.org,
-          detail:
-            "出口 IP 是平台最先看到的信号。中国大陆 / 港澳口径由上方切换决定；机房、云厂商、VPN 和代理池会被视为中风险。\nIP：" +
-            result.ip +
-            (ipResults.length > 1 ? "\n检测到双栈出口：\n" + formatExitIpList(ipResults) : "") +
-            "\n地区：" +
-            (result.country || result.cc || "未知") +
-            "\nASN：" +
-            (result.asn || "未知") +
-            "\n组织：" +
-            (result.org || "未知")
-        });
-        recomputeConsistency();
+    var multiStarted = false;
+    var lastAppliedKey = "";
+
+    function maybeRunMulti(ip) {
+      if (multiStarted || !ip) {
+        return;
+      }
+      multiStarted = true;
+      scheduleIdle(function () {
         if (!state.multi.length) {
-          runMulti(result.ip || "");
+          runMulti(ip);
+        }
+      }, 2600);
+    }
+
+    function applyIpResults(results) {
+      var ipResults = uniqueIpResults(results);
+      var result = ipResults[0] || results[0];
+      if (!result || !result.ok || !result.ip) {
+        return false;
+      }
+      var appliedKey = ipResults
+        .map(function (item) {
+          return item.source + ":" + item.ip;
+        })
+        .join("|");
+      if (appliedKey && appliedKey === lastAppliedKey) {
+        return true;
+      }
+      lastAppliedKey = appliedKey;
+      state.myIp = result.ip || "";
+      state.exitIps = ipResults;
+      var orgText = [result.org, result.asn].join(" ");
+      var hasGeo = Boolean(result.cc || (result.country && result.country !== "未知"));
+      var cn = isChinaCountry(result.cc);
+      var host = isHostingOrg(orgText);
+      var status = !hasGeo ? "amber" : cn ? "red" : host ? "amber" : "green";
+      var value =
+        ipResults.length > 1
+          ? ipResults
+              .map(function (item) {
+                return ipVersionLabel(item.ip) + " " + item.ip;
+              })
+              .join(" · ")
+          : [result.ip, result.cc || result.country, result.org].filter(Boolean).join(" · ");
+      setRow("ip", {
+        status: status,
+        value: value,
+        tag: result.source,
+        country: result.cc,
+        isCN: cn,
+        host: host,
+        ip: result.ip,
+        ips: ipResults.map(function (item) {
+          return item.ip;
+        }),
+        org: result.org,
+        detail:
+          "出口 IP 是平台最先看到的信号。中国大陆 / 港澳口径由上方切换决定；机房、云厂商、VPN 和代理池会被视为中风险。\nIP：" +
+          result.ip +
+          (ipResults.length > 1 ? "\n检测到双栈出口：\n" + formatExitIpList(ipResults) : "") +
+          "\n地区：" +
+          (result.country || result.cc || "未知") +
+          "\nASN：" +
+          (result.asn || "未知") +
+          "\n组织：" +
+          (result.org || "未知")
+      });
+      recomputeConsistency();
+      maybeRunMulti(result.ip || "");
+      return true;
+    }
+
+    var probes = sources.map(function (task) {
+      return task()
+        .then(function (result) {
+          return result && result.ok ? result : null;
+        })
+        .catch(function () {
+          return null;
+        });
+    });
+
+    firstResolvedResult(probes).then(function (result) {
+      if (result) {
+        applyIpResults([result]);
+      }
+    });
+
+    Promise.all(probes)
+      .then(function (results) {
+        var successful = results.filter(function (result) {
+          return result && result.ok;
+        });
+        if (!successful.length || !applyIpResults(successful)) {
+          throw new Error("empty result");
         }
       })
       .catch(function () {
@@ -974,16 +1047,39 @@
       });
   }
 
-  function collectSuccessful(tasks) {
-    return Promise.all(
-      tasks.map(function (task) {
-        return task().catch(function () {
-          return null;
-        });
-      })
-    ).then(function (results) {
-      return results.filter(function (result) {
-        return result && result.ok;
+  function firstResolvedResult(promises) {
+    return new Promise(function (resolve) {
+      var settled = false;
+      var remaining = promises.length;
+      if (!remaining) {
+        resolve(null);
+        return;
+      }
+      promises.forEach(function (promise) {
+        promise
+          .then(function (result) {
+            if (settled) {
+              return;
+            }
+            if (result) {
+              settled = true;
+              resolve(result);
+              return;
+            }
+            remaining -= 1;
+            if (remaining === 0) {
+              resolve(null);
+            }
+          })
+          .catch(function () {
+            if (settled) {
+              return;
+            }
+            remaining -= 1;
+            if (remaining === 0) {
+              resolve(null);
+            }
+          });
       });
     });
   }
@@ -1027,38 +1123,6 @@
         );
       })
       .join("\n");
-  }
-
-  function firstSuccessful(tasks) {
-    return new Promise(function (resolve, reject) {
-      var settled = false;
-      var remaining = tasks.length;
-      var lastError = null;
-      tasks.forEach(function (task) {
-        task()
-          .then(function (result) {
-            if (settled) {
-              return;
-            }
-            if (result && result.ok) {
-              settled = true;
-              resolve(result);
-              return;
-            }
-            remaining -= 1;
-            if (remaining === 0) {
-              reject(lastError || new Error("empty result"));
-            }
-          })
-          .catch(function (err) {
-            lastError = err;
-            remaining -= 1;
-            if (!settled && remaining === 0) {
-              reject(lastError || new Error("all failed"));
-            }
-          });
-      });
-    });
   }
 
   function recomputeConsistency() {
@@ -2044,6 +2108,28 @@
   }
 
   function render() {
+    if (state.renderPaused || state.renderScheduled) {
+      return;
+    }
+    state.renderScheduled = true;
+    var token = (state.renderToken += 1);
+    var schedule = window.requestAnimationFrame || function (callback) {
+      window.setTimeout(callback, 0);
+    };
+    schedule(function () {
+      if (token === state.renderToken) {
+        renderNow();
+      }
+    });
+  }
+
+  function renderImmediate() {
+    state.renderToken += 1;
+    renderNow();
+  }
+
+  function renderNow() {
+    state.renderScheduled = false;
     document.body.classList.toggle("privacy-on", state.privacy);
     renderTopbar();
     renderScore();
@@ -2776,6 +2862,45 @@
     };
   }
 
+  function scheduleAfterPaint(fn, delayMs) {
+    var delay = typeof delayMs === "number" ? delayMs : 0;
+    function runAfterDelay() {
+      window.setTimeout(fn, delay);
+    }
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(runAfterDelay);
+      });
+      return;
+    }
+    runAfterDelay();
+  }
+
+  function scheduleIdle(fn, timeoutMs) {
+    if (window.requestIdleCallback) {
+      window.requestIdleCallback(fn, {
+        timeout: timeoutMs || 1800
+      });
+      return;
+    }
+    window.setTimeout(fn, Math.min(timeoutMs || 1400, 1400));
+  }
+
+  function loadAnalytics() {
+    if (state.analyticsLoaded) {
+      return;
+    }
+    state.analyticsLoaded = true;
+    if (typeof window.gtag === "function") {
+      window.gtag("js", new Date());
+      window.gtag("config", "G-8YCMR5G9CN");
+    }
+    var script = document.createElement("script");
+    script.async = true;
+    script.src = "https://www.googletagmanager.com/gtag/js?id=G-8YCMR5G9CN";
+    document.head.appendChild(script);
+  }
+
   function loadStars() {
     getJson("https://api.github.com/repos/" + REPO, 8000)
       .then(function (repo) {
@@ -2788,6 +2913,8 @@
   }
 
   function runAll() {
+    state.runId += 1;
+    var runId = state.runId;
     setPendingRows();
     state.multi = [];
     state.aipath = [];
@@ -2797,20 +2924,33 @@
     state.exitIps = [];
     state.score = 0;
     state.displayScore = 0;
-    render();
-    runLocalSignals();
+    renderImmediate();
+    runLocalSignals(true);
     recomputeConsistency();
     runIP();
-    runWebRTC();
-    runDNS("std");
-    runConn();
-    runAipath();
-    runAiStatus();
+    scheduleAfterPaint(function () {
+      if (runId !== state.runId) {
+        return;
+      }
+      runWebRTC();
+      runDNS("std");
+    }, 1200);
+    scheduleAfterPaint(function () {
+      if (runId !== state.runId) {
+        return;
+      }
+      runConn();
+      runAipath();
+      runAiStatus();
+    }, 1800);
   }
 
   document.addEventListener("DOMContentLoaded", function () {
     bindStaticEvents();
-    loadStars();
     runAll();
+    scheduleAfterPaint(function () {
+      scheduleIdle(loadStars, 2200);
+      scheduleIdle(loadAnalytics, 4200);
+    }, 1200);
   });
 })();

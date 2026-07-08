@@ -28,6 +28,8 @@
 }
 
 html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -249,6 +251,11 @@ input:focus-visible {
   stroke-width: 2;
 }
 
+#star-count {
+  display: inline-block;
+  min-width: 4ch;
+}
+
 .anchor-nav {
   position: relative;
   overflow: hidden;
@@ -288,6 +295,7 @@ input:focus-visible {
 .shell {
   position: relative;
   z-index: 1;
+  min-height: 100vh;
   padding-bottom: 72px;
 }
 
@@ -366,6 +374,7 @@ input:focus-visible {
 
 .score-summary {
   max-width: 450px;
+  min-height: 45px;
   margin: 30px auto 0;
   color: #4a4a44;
   font-size: 14px;
@@ -1580,6 +1589,7 @@ input:focus-visible {
   }
 
   .score-summary {
+    min-height: 62px;
     margin-top: 24px;
     font-size: 13px;
     line-height: 1.58;

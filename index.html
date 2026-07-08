@@ -28,17 +28,14 @@
     />
     <meta name="twitter:image" content="https://betaer.github.io/AISignalGuard/assets/social-preview.png" />
     <link rel="icon" href="favicon.svg?v=20260708-3" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=20260708-11" />
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-8YCMR5G9CN"></script>
+    <link rel="stylesheet" href="styles.min.css?v=20260708-13" />
     <script>
       window.dataLayer = window.dataLayer || [];
-      function gtag() {
-        dataLayer.push(arguments);
-      }
-      gtag("js", new Date());
-      gtag("config", "G-8YCMR5G9CN");
+      window.gtag = window.gtag || function () {
+        window.dataLayer.push(arguments);
+      };
     </script>
-    <script src="app.js?v=20260708-8" defer></script>
+    <script src="app.min.js?v=20260708-10" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳到检测结果</a>
