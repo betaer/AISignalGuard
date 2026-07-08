@@ -28,7 +28,7 @@
     />
     <meta name="twitter:image" content="https://betaer.github.io/AISignalGuard/assets/social-preview.png" />
     <link rel="icon" href="favicon.svg?v=20260708-3" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=20260708-2" />
+    <link rel="stylesheet" href="styles.css?v=20260708-5" />
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-8YCMR5G9CN"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -146,21 +146,24 @@
         <span>浏览器端隐私自查与安全研究工具</span>
       </div>
       <div>
-        <a href="#sec-score">回到顶部</a>
         <a href="https://github.com/betaer/AISignalGuard/issues/new/choose" target="_blank" rel="noreferrer">反馈问题</a>
+        <a href="https://github.com/betaer/AISignalGuard/commits/main/" target="_blank" rel="noreferrer">更新日志</a>
         <a href="https://github.com/betaer/AISignalGuard" target="_blank" rel="noreferrer">源码</a>
       </div>
     </footer>
 
-    <button class="floating-share" id="copy-summary" type="button" aria-label="复制诊断摘要" title="复制脱敏诊断摘要">
-      <svg class="floating-share-icon" aria-hidden="true" viewBox="0 0 24 24">
-        <circle cx="18" cy="5" r="3"></circle>
-        <circle cx="6" cy="12" r="3"></circle>
-        <circle cx="18" cy="19" r="3"></circle>
-        <path d="M8.6 10.6 15.4 6.4"></path>
-        <path d="M8.6 13.4 15.4 17.6"></path>
-      </svg>
-      <span class="floating-share-label">复制摘要</span>
-    </button>
+    <div class="floating-actions" aria-label="快捷操作">
+      <button class="floating-share" id="copy-summary" type="button" aria-label="复制诊断摘要" title="复制脱敏诊断摘要">
+        <svg class="floating-share-icon" aria-hidden="true" viewBox="0 0 24 24">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <path d="M8.6 10.6 15.4 6.4"></path>
+          <path d="M8.6 13.4 15.4 17.6"></path>
+        </svg>
+        <span class="floating-share-label">复制摘要</span>
+      </button>
+      <a class="floating-top-link" href="#sec-score" aria-label="回到顶部">↑ Top</a>
+    </div>
   </body>
 </html>

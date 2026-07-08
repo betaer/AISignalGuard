@@ -707,11 +707,18 @@ input:focus-visible {
   color: var(--green);
 }
 
-.floating-share {
+.floating-actions {
   position: fixed;
   right: max(20px, env(safe-area-inset-right));
   bottom: max(22px, env(safe-area-inset-bottom));
   z-index: 55;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.floating-share {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -772,6 +779,32 @@ input:focus-visible {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+.floating-top-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  border-bottom: 1px solid rgba(143, 143, 135, 0.46);
+  color: var(--muted);
+  font: 650 11px/1 var(--mono);
+  letter-spacing: 0.02em;
+  padding: 0 3px;
+  text-decoration: none;
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.floating-top-link:hover {
+  border-bottom-color: var(--green);
+  color: var(--green);
+}
+
+.floating-top-link:active {
+  transform: translateY(1px);
 }
 
 .conn-panel {
@@ -1527,9 +1560,12 @@ input:focus-visible {
     text-overflow: clip;
   }
 
-  .floating-share {
+  .floating-actions {
     right: max(14px, env(safe-area-inset-right));
     bottom: max(14px, env(safe-area-inset-bottom));
+  }
+
+  .floating-share {
     min-width: 106px;
     min-height: 40px;
     border-radius: 11px;
