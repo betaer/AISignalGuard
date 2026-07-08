@@ -331,7 +331,8 @@ input:focus-visible {
 
 .score-track,
 .score-value,
-.score-segment {
+.score-segment,
+.score-progress {
   fill: none;
   stroke-width: 5;
 }
@@ -354,6 +355,30 @@ input:focus-visible {
   transition:
     stroke 460ms ease,
     stroke-dashoffset 560ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.score-progress {
+  stroke: var(--pending);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dashoffset: 0;
+  transition: stroke 460ms ease;
+}
+
+.score-progress-green {
+  stroke: var(--green);
+}
+
+.score-progress-amber {
+  stroke: #d48a1d;
+}
+
+.score-progress-red {
+  stroke: var(--red);
+}
+
+.score-progress-pending {
+  stroke: #d8d8d1;
 }
 
 .score-segment-green {
@@ -390,6 +415,12 @@ input:focus-visible {
   letter-spacing: 0.02em;
   padding: 5px;
   transform: translate(-50%, -50%);
+}
+
+.score-metric:hover,
+.score-metric:focus-visible,
+.score-metric.is-active {
+  z-index: 40;
 }
 
 .score-metric-label {
@@ -429,15 +460,15 @@ input:focus-visible {
   left: 50%;
   z-index: 20;
   display: none;
-  width: 210px;
+  width: 246px;
   border: 1px solid var(--line-2);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
+  background: #fff;
   box-shadow: 0 16px 50px rgba(31, 31, 25, 0.12);
   color: var(--ink-2);
-  font: 11px/1.55 var(--sans);
+  font: 11px/1.48 var(--sans);
   opacity: 0;
-  padding: 11px 12px;
+  padding: 10px 12px 11px;
   pointer-events: none;
   text-align: left;
   transform: translate(-50%, 4px);
@@ -489,26 +520,38 @@ input:focus-visible {
   transform: translate(0, -50%);
 }
 
-.score-metric-tip strong,
-.score-metric-tip span,
-.score-metric-tip em {
+.score-tip-title,
+.score-tip-meta,
+.score-tip-detail,
+.score-tip-line {
   display: block;
 }
 
-.score-metric-tip strong {
-  margin-bottom: 4px;
+.score-tip-title {
+  margin-bottom: 5px;
   color: var(--ink);
   font: 650 11px/1.2 var(--mono);
 }
 
-.score-metric-tip span {
-  margin-bottom: 5px;
+.score-tip-meta {
+  margin-bottom: 7px;
   color: var(--muted);
   font: 10.5px/1.35 var(--mono);
 }
 
-.score-metric-tip em {
-  font-style: normal;
+.score-tip-detail {
+  color: var(--ink-2);
+  font: 11.5px/1.5 var(--sans);
+}
+
+.score-tip-line + .score-tip-line {
+  margin-top: 4px;
+}
+
+.score-metric-tip .risk-emphasis,
+.score-metric-tip .china-emphasis {
+  display: inline;
+  font-weight: 750;
 }
 
 .score-copy {
@@ -1750,7 +1793,7 @@ input:focus-visible {
   }
 
   .score-metric-tip {
-    width: min(210px, 72vw);
+    width: min(246px, 72vw);
   }
 
   .score-metric.is-right .score-metric-tip,

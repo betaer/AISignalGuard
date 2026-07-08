@@ -2087,7 +2087,11 @@
     return "检测中";
   }
 
-  function renderScoreRingSegments(segments) {
+  function scoreProgressClass(score, hasRows) {
+    return hasRows ? scoreKey(score) : "pending";
+  }
+
+  function renderScoreRingSegments(segments, score, hasRows) {
     var totalWeight = SCORE_SEGMENTS.reduce(function (sum, item) {
       return sum + item.weight;
     }, 0);
@@ -2095,21 +2099,14 @@
     var usable = RING_CIRCUMFERENCE - gap * SCORE_SEGMENTS.length;
     var cursor = 0;
     var tracks = [];
-    var arcs = [];
+    var normalizedScore = hasRows ? Math.max(0, Math.min(100, score)) : 0;
+    var progressLength = RING_CIRCUMFERENCE * (normalizedScore / 100);
+    var progressKey = scoreProgressClass(normalizedScore, hasRows);
     SCORE_SEGMENTS.forEach(function (meta, index) {
       var segment = segments[index];
       var length = usable * (meta.weight / totalWeight);
       var dash = Math.max(0, length).toFixed(3) + " " + RING_CIRCUMFERENCE.toFixed(3);
       var offset = (-cursor).toFixed(3);
-      var title =
-        segment.name +
-        "：" +
-        segmentStatusText(segment) +
-        "，扣 " +
-        segment.penalty +
-        "/" +
-        segment.max +
-        " 分";
       tracks.push(
         '<circle class="score-track score-track-segment" cx="60" cy="60" r="52" stroke-dasharray="' +
           dash +
@@ -2117,21 +2114,37 @@
           offset +
           '"></circle>'
       );
-      arcs.push(
-        '<circle class="score-segment score-segment-' +
-          statusClass(segment.status) +
-          '" cx="60" cy="60" r="52" stroke-dasharray="' +
-          dash +
-          '" stroke-dashoffset="' +
-          offset +
-          '">' +
-          "<title>" +
-          escapeHtml(title) +
-          "</title></circle>"
-      );
       cursor += length + gap;
     });
-    return tracks.join("") + arcs.join("");
+    return (
+      tracks.join("") +
+      '<circle class="score-progress score-progress-' +
+      progressKey +
+      '" cx="60" cy="60" r="52" stroke-dasharray="' +
+      progressLength.toFixed(3) +
+      " " +
+      RING_CIRCUMFERENCE.toFixed(3) +
+      '" stroke-dashoffset="0"><title>' +
+      escapeHtml(hasRows ? "综合信任分：" + normalizedScore + "/100" : "综合信任分：检测中") +
+      "</title></circle>"
+    );
+  }
+
+  function scoreTipDetailRows(detail) {
+    return String(detail || "等待检测结果")
+      .split(/(?:；|。)\s*/)
+      .map(function (row) {
+        return row.trim();
+      })
+      .filter(Boolean);
+  }
+
+  function renderScoreTipDetail(detail) {
+    return scoreTipDetailRows(detail)
+      .map(function (row) {
+        return '<span class="score-tip-line">' + highlightRiskText(row) + "</span>";
+      })
+      .join("");
   }
 
   function renderScoreSegmentHotspots(segments) {
@@ -2170,15 +2183,15 @@
         '<span class="score-metric-label">' +
         escapeHtml(segment.label) +
         "</span>" +
-        '<span class="score-metric-tip" role="tooltip"><strong>' +
+        '<span class="score-metric-tip" role="tooltip"><strong class="score-tip-title">' +
         escapeHtml(segment.name) +
-        "</strong><span>状态：" +
+        '</strong><span class="score-tip-meta">状态：' +
         escapeHtml(segmentStatusText(segment)) +
-        " · 扣分 " +
+        " · 扣分：" +
         escapeHtml(segment.penalty + "/" + segment.max) +
-        "</span><em>" +
-        highlightRiskText(segment.detail || "等待检测结果") +
-        "</em></span></button>"
+        '</span><span class="score-tip-detail">' +
+        renderScoreTipDetail(segment.detail) +
+        "</span></span></button>"
       );
     }).join("");
   }
@@ -2300,7 +2313,7 @@
         return item.status === "red";
       })
     ) {
-      return "高危 · 有 AI 站点路径指向中国";
+      return "高危 · AI 路径命中中国出口";
     }
     if (
       state.aipath.some(function (item) {
@@ -2309,7 +2322,7 @@
     ) {
       return "检测中";
     }
-    return "可信 · 未见中国出口";
+    return "可信 · AI 路径未见中国出口";
   }
 
   function diagnosticSummaryText() {
@@ -2399,7 +2412,7 @@
     $("#score-number").textContent = value;
     $("#score-status").textContent = Object.keys(state.rows).length ? statusText[key] : "检测中";
     $("#score-status").style.color = COLORS[key];
-    $("#score-ring").innerHTML = renderScoreRingSegments(segments);
+    $("#score-ring").innerHTML = renderScoreRingSegments(segments, state.score, Object.keys(state.rows).length > 0);
     $("#score-segment-hotspots").innerHTML = renderScoreSegmentHotspots(segments);
     $("#score-summary").innerHTML = highlightRiskText(summaryText());
     var copySummary = $("#copy-summary");
