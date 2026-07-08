@@ -4,6 +4,10 @@
 
 [在线体验](https://betaer.github.io/AISignalGuard/) · [反馈问题](https://github.com/betaer/AISignalGuard/issues/new/choose) · [发布物料](docs/launch-kit.md)
 
+⭐ If you like this project, please consider giving it a star!
+
+[![GitHub stars](https://img.shields.io/github/stars/betaer/AISignalGuard.svg?style=social)](https://github.com/betaer/AISignalGuard)
+
 ![AI Signal Guard social preview](assets/social-preview.svg)
 
 ## 为什么要做
