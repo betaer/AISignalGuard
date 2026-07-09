@@ -589,6 +589,7 @@ input:focus-visible {
   font-size: 14px;
   line-height: 1.62;
   text-wrap: pretty;
+  white-space: pre-line;
 }
 
 .score-insights {
@@ -631,11 +632,11 @@ input:focus-visible {
 
 .score-risk-chip:hover,
 .score-risk-chip:focus-visible {
-  background: #ffffff;
-  border-color: var(--ink);
-  box-shadow: 0 8px 24px rgba(31, 31, 25, 0.08);
+  background: #fbfbf8;
+  border-color: var(--line-2);
+  box-shadow: none;
   outline: 0;
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .score-risk-chip-red {

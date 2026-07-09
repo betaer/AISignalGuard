@@ -2342,7 +2342,7 @@
       .join("");
   }
 
-  function renderScoreSegmentHotspots(segments) {
+  function renderScoreSegmentHotspots(segments, ready) {
     var totalWeight = SCORE_SEGMENTS.reduce(function (sum, item) {
       return sum + item.weight;
     }, 0);
@@ -2360,10 +2360,11 @@
       var y = 90 + Math.sin(rad) * radius;
       var side = y > 92 ? "is-bottom" : "is-top";
       var horizontal = x > 118 ? "is-right" : x < 62 ? "is-left" : "is-center";
+      var displayStatus = ready ? segment.status : "pending";
       cursor += length + gap;
       return (
         '<button class="score-metric score-metric-' +
-        statusClass(segment.status) +
+        statusClass(displayStatus) +
         " " +
         side +
         " " +
@@ -2507,7 +2508,7 @@
     if (!flags.length) {
       return "未发现明显暴露信号，各项信号与出口 IP 基本一致。这是较理想的状态。";
     }
-    return "检测完成。发现 " + flags.length + " 项需要留意的信号，点击下方标记项查看对应结果和规避建议。";
+    return "检测完成！\n发现 " + flags.length + " 项需要留意的信号！";
   }
 
   function shareStatusLabel(status) {
@@ -2680,7 +2681,7 @@
     $("#score-status").textContent = ready ? statusText[key] : "检测中";
     $("#score-status").style.color = ready ? COLORS[key] : COLORS.pending;
     $("#score-ring").innerHTML = renderScoreRingSegments(segments, state.score, ready);
-    $("#score-segment-hotspots").innerHTML = renderScoreSegmentHotspots(segments);
+    $("#score-segment-hotspots").innerHTML = renderScoreSegmentHotspots(segments, ready);
     $("#score-summary").innerHTML = highlightRiskText(summaryText());
     $("#score-insights").innerHTML = renderScoreInsights();
     var copySummary = $("#copy-summary");
