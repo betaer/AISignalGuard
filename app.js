@@ -1459,6 +1459,7 @@
             (hiddenCount ? "\n另有 " + hiddenCount + " 个内网 / 浏览器隐藏候选，单独看不构成泄漏。" : "")
         });
       } else if (publicIps.length || privateIps.length) {
+        var secondaryCandidates = summarizeWebrtcCandidates([], privateIps, hiddenHosts);
         setRow("webrtc", {
           status: "green",
           value: publicIps.length ? "候选与出口一致" : "仅内网候选",
@@ -1468,10 +1469,10 @@
               ? "WebRTC 看到了公网候选，但它们都能在当前出口 IP 列表中找到，未发现代理外公网地址。\n公网候选：\n" +
                 formatWebrtcCandidateLines(publicIps, exitIps) +
                 "\n当前出口 IP：\n" +
-                formatIpLines(exitIps)
-              : "WebRTC 只返回了内网、CGNAT、Fake-IP 或保留地址，未发现可直接定位真实网络的公网候选。") +
-            "\n已归类候选：" +
-            summarizeWebrtcCandidates(publicIps, privateIps, hiddenHosts)
+                formatIpLines(exitIps) +
+                (secondaryCandidates !== "无" ? "\n其他候选：\n" + secondaryCandidates : "")
+              : "WebRTC 只返回了内网、CGNAT、Fake-IP 或保留地址，未发现可直接定位真实网络的公网候选。\n候选分类：\n" +
+                secondaryCandidates)
         });
       } else if (hiddenHosts.length) {
         setRow("webrtc", {
