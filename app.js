@@ -97,6 +97,13 @@
     dns: "让 DNS 与代理走同一隧道，开启远程解析 / DoH / TUN，避免使用运营商本地 DNS；必要时关闭 IPv6 或确保 IPv6 DNS 也走代理。"
   };
 
+  var DETECTION_HINTS = [
+    "先校准，再判断；单个信号不是结论，组合信号才有意义。",
+    "不确定时先标记为未确认，不把浏览器限制误读成安全。",
+    "检测只报告浏览器可观察到的事实，证据不足的部分保持留白。",
+    "一致性比单项漂亮指标更重要，矛盾信号才最值得警惕。"
+  ];
+
   var CHINESE_FONT_CANDIDATES = [
     "DengXian",
     "FangSong",
@@ -2384,51 +2391,107 @@
     }).join("");
   }
 
-  function collectRiskFlags() {
-    var flags = [];
+  function collectRiskItems() {
+    var items = [];
     var ip = state.rows.ip || {};
     if (ip.isCN) {
-      flags.push("出口 IP 在中国口径内");
+      items.push({ label: "出口 IP 在中国口径内", section: "sec-ip", row: "ip", severity: "red" });
     }
     if (ip.host) {
-      flags.push("机房 / VPN 出口");
+      items.push({ label: "机房 / VPN 出口", section: "sec-ip", row: "ip", severity: "amber" });
     }
     if (ip.status === "amber" && !ip.country) {
-      flags.push("出口 IP 未完整测出");
+      items.push({ label: "出口 IP 未完整测出", section: "sec-ip", row: "ip", severity: "amber" });
     }
     if (state.dns.cnHit) {
-      flags.push("DNS 中国解析器");
+      items.push({ label: "DNS 中国解析器", section: "sec-leak", row: "dns", severity: "red" });
     }
     if (networkVerdict().result === true) {
-      flags.push("大陆直连");
+      items.push({ label: "大陆直连", section: "sec-conn", row: "", severity: "red" });
     }
     if ((state.rows.webrtc || {}).flag) {
-      flags.push("WebRTC 暴露真实 IP");
+      items.push({ label: "WebRTC 暴露真实 IP", section: "sec-leak", row: "webrtc", severity: "red" });
     }
     if ((state.rows.consistency || {}).flag) {
-      flags.push("信号前后矛盾");
+      items.push({ label: "信号前后矛盾", section: "sec-ip", row: "consistency", severity: "red" });
     }
     if ((state.rows.lang || {}).status === "amber") {
-      flags.push("语言含中文");
+      items.push({ label: "语言含中文", section: "sec-identity", row: "lang", severity: "amber" });
     }
     if ((state.rows.tz || {}).status === "amber") {
-      flags.push("时区在中国");
+      items.push({ label: "时区在中国", section: "sec-identity", row: "tz", severity: "amber" });
     }
     if (
       state.aipath.some(function (item) {
         return item.status === "red";
       })
     ) {
-      flags.push("AI 路径出口在中国");
+      items.push({ label: "AI 路径出口在中国", section: "sec-aipath", row: "", severity: "red" });
     }
     if (
       state.multi.some(function (item) {
         return item.mismatch;
       })
     ) {
-      flags.push("多源 IP 情报冲突");
+      items.push({ label: "多源 IP 情报冲突", section: "sec-multi", row: "", severity: "amber" });
     }
-    return flags;
+    return items;
+  }
+
+  function collectRiskFlags() {
+    return collectRiskItems().map(function (item) {
+      return item.label;
+    });
+  }
+
+  function detectionHint() {
+    return DETECTION_HINTS[state.runId % DETECTION_HINTS.length];
+  }
+
+  function renderScoreInsights() {
+    var items = collectRiskItems();
+    if (items.length) {
+      return (
+        '<div class="score-risk-strip" aria-label="风险项定位">' +
+        items
+          .map(function (item) {
+            return (
+              '<button class="score-risk-chip score-risk-chip-' +
+              escapeHtml(item.severity || "amber") +
+              '" type="button" data-risk-section="' +
+              escapeHtml(item.section) +
+              '" data-risk-row="' +
+              escapeHtml(item.row || "") +
+              '"><span class="score-risk-mark">!</span><span>' +
+              highlightRiskText(item.label) +
+              "</span></button>"
+            );
+          })
+          .join("") +
+        "</div>"
+      );
+    }
+    if (!scoreReady()) {
+      return '<p class="score-hint">' + escapeHtml(detectionHint()) + "</p>";
+    }
+    return "";
+  }
+
+  function openRiskTarget(sectionId, rowId) {
+    if (rowId) {
+      state.open[rowId] = true;
+    }
+    state.activeId = sectionId || state.activeId;
+    renderImmediate();
+    window.requestAnimationFrame(function () {
+      var target =
+        (rowId && document.querySelector('[data-row="' + rowId.replace(/"/g, '\\"') + '"]')) ||
+        document.getElementById(sectionId);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      updateActiveNav();
+    });
   }
 
   function summaryText() {
@@ -2438,20 +2501,13 @@
     }
     if (!scoreReady()) {
       return flags.length
-        ? "检测仍在继续，已发现 " + flags.length + " 项风险信号：" + flags.slice(0, 3).join(" · ") + "。"
+        ? "检测仍在继续，已发现 " + flags.length + " 项风险信号。点击下方标记项可先定位排查。"
         : "正在完成 DNS、WebRTC、网络连通、AI 路径和多源交叉检测。";
     }
     if (!flags.length) {
       return "未发现明显暴露信号，各项信号与出口 IP 基本一致。这是较理想的状态。";
     }
-    return (
-      "检测到 " +
-      flags.length +
-      " 项信号正在暴露来源或代理身份：" +
-      flags.slice(0, 3).join(" · ") +
-      (flags.length > 3 ? " 等。" : "。") +
-      "展开下方各项查看规避建议。"
-    );
+    return "检测完成。发现 " + flags.length + " 项需要留意的信号，点击下方标记项查看对应结果和规避建议。";
   }
 
   function shareStatusLabel(status) {
@@ -2626,6 +2682,7 @@
     $("#score-ring").innerHTML = renderScoreRingSegments(segments, state.score, ready);
     $("#score-segment-hotspots").innerHTML = renderScoreSegmentHotspots(segments);
     $("#score-summary").innerHTML = highlightRiskText(summaryText());
+    $("#score-insights").innerHTML = renderScoreInsights();
     var copySummary = $("#copy-summary");
     if (copySummary) {
       var copyLabel = copySummary.querySelector(".floating-share-label");
@@ -3214,6 +3271,11 @@
         if (action === "run-multi") runMulti(($("#multi-ip") || {}).value || "");
         if (action === "run-aipath") runAipath();
         if (action === "run-aistatus") runAiStatus();
+      });
+    });
+    document.querySelectorAll("[data-risk-section]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        openRiskTarget(button.dataset.riskSection, button.dataset.riskRow || "");
       });
     });
     var input = $("#multi-ip");
