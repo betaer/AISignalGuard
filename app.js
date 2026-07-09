@@ -1225,8 +1225,30 @@
     });
   }
 
+  function ipSortWeight(ip) {
+    if (isIpv4Address(ip)) {
+      return 0;
+    }
+    if (isIpv6Address(ip)) {
+      return 1;
+    }
+    return 2;
+  }
+
+  function sortIpValues(values) {
+    return uniqueValues(values).sort(function (left, right) {
+      return ipSortWeight(left) - ipSortWeight(right);
+    });
+  }
+
+  function sortIpResults(results) {
+    return (results || []).slice().sort(function (left, right) {
+      return ipSortWeight(left && left.ip) - ipSortWeight(right && right.ip);
+    });
+  }
+
   function formatIpLines(ips) {
-    var list = uniqueValues(ips);
+    var list = sortIpValues(ips);
     return (
       list
         .map(function (ip) {
@@ -1242,7 +1264,7 @@
       exitSet[ip] = true;
     });
     return (
-      uniqueValues(ips)
+      sortIpValues(ips)
         .map(function (ip) {
           return fieldLine(ipVersionLabel(ip), ip) + (exitSet[ip] ? "（与出口一致）" : "（出口列表外）");
         })
@@ -1251,7 +1273,7 @@
   }
 
   function formatExitIpHeadline(results, fallback) {
-    var list = results && results.length ? results : fallback ? [fallback] : [];
+    var list = sortIpResults(results && results.length ? results : fallback ? [fallback] : []);
     if (list.length > 1) {
       return formatIpLines(
         list.map(function (item) {
@@ -1270,7 +1292,7 @@
   }
 
   function formatExitIpList(results) {
-    return results
+    return sortIpResults(results)
       .map(function (item) {
         return [
           fieldLine(ipVersionLabel(item.ip), item.ip),
@@ -1284,7 +1306,7 @@
   }
 
   function formatAiPathValue(ips, locs) {
-    var cleanIps = uniqueValues(ips);
+    var cleanIps = sortIpValues(ips);
     var cleanLocs = uniqueValues(locs);
     var loc = cleanLocs.length > 1 ? cleanLocs.join(" / ") : cleanLocs[0] || "?";
     return formatIpLines(cleanIps) + "\n" + fieldLine("地区", loc);
