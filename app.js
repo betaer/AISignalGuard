@@ -609,6 +609,19 @@
     };
   }
 
+  function lookupIpwhoisByIp(ip) {
+    if (!ip) {
+      return Promise.resolve(null);
+    }
+    return getJson("https://ipwho.is/" + encodeURIComponent(ip), 7000).then(function (payload) {
+      var normalized = normalizeIpPayload(payload, "ipwho.is");
+      if (normalized && !normalized.ip) {
+        normalized.ip = ip;
+      }
+      return normalized;
+    });
+  }
+
   function runLocalSignals(immediate) {
     withBatchedRender(function () {
       var languages = Array.from(navigator.languages || [navigator.language || ""]);
@@ -1024,7 +1037,10 @@
       },
       function () {
         return getJson("https://api6.ipify.org?format=json", 7000).then(function (payload) {
-          return normalizeIpPayload(payload, "ipify6.org");
+          var fallback = normalizeIpPayload(payload, "ipify6.org");
+          return lookupIpwhoisByIp(fallback && fallback.ip).catch(function () {
+            return fallback;
+          });
         });
       }
     ];
@@ -1433,7 +1449,7 @@
         return exitIps.length && exitIps.indexOf(ip) < 0;
       });
       var leak = unmatchedPublicIps.length > 0;
-      var hiddenCount = hiddenHosts.length + privateIps.length;
+      var secondaryCandidates = summarizeWebrtcCandidates([], privateIps, hiddenHosts);
       if (publicIps.length && !exitIps.length) {
         setRow("webrtc", {
           status: "amber",
@@ -1442,7 +1458,7 @@
           detail:
             "WebRTC 看到了公网候选，但当前出口 IP 还没有完成读取，暂时无法判断它是否为代理外地址。\n公网候选：\n" +
             formatIpLines(publicIps) +
-            (hiddenCount ? "\n另有 " + hiddenCount + " 个内网 / 浏览器隐藏候选，单独看不构成泄漏。" : "")
+            (secondaryCandidates !== "无" ? "\n其他候选：\n" + secondaryCandidates : "")
         });
       } else if (leak) {
         setRow("webrtc", {
@@ -1456,10 +1472,9 @@
             formatIpLines(exitIps) +
             "\n全部公网候选：\n" +
             formatWebrtcCandidateLines(publicIps, exitIps) +
-            (hiddenCount ? "\n另有 " + hiddenCount + " 个内网 / 浏览器隐藏候选，单独看不构成泄漏。" : "")
+            (secondaryCandidates !== "无" ? "\n其他候选：\n" + secondaryCandidates : "")
         });
       } else if (publicIps.length || privateIps.length) {
-        var secondaryCandidates = summarizeWebrtcCandidates([], privateIps, hiddenHosts);
         setRow("webrtc", {
           status: "green",
           value: publicIps.length ? "候选与出口一致" : "仅内网候选",
@@ -1477,12 +1492,11 @@
       } else if (hiddenHosts.length) {
         setRow("webrtc", {
           status: "green",
-          value: "浏览器已隐藏地址",
+          value: "mDNS 隐藏地址",
           flag: false,
           detail:
-            "浏览器把 WebRTC 候选地址隐藏成 mDNS 主机名，网页看不到真实内网 IP 或公网 IP。这是现代浏览器常见的保护行为。\n已隐藏候选：" +
-            hiddenHosts.length +
-            " 个"
+            "浏览器把 WebRTC 候选地址替换成 mDNS .local 主机名，网页看不到真实内网 IP 或公网 IP。这是现代浏览器常见的保护行为。\nmDNS 候选：\n" +
+            formatMdnsLines(hiddenHosts)
         });
       } else {
         setRow("webrtc", {
@@ -1516,9 +1530,20 @@
       parts.push("内网 / 保留：\n" + formatIpLines(privateIps));
     }
     if (hiddenHosts.length) {
-      parts.push("浏览器隐藏 mDNS " + hiddenHosts.length + " 个");
+      parts.push("mDNS 候选：\n" + formatMdnsLines(hiddenHosts));
     }
     return parts.join("\n") || "无";
+  }
+
+  function formatMdnsLines(hosts) {
+    return (
+      uniqueValues(hosts)
+        .sort()
+        .map(function (host) {
+          return fieldLine("mDNS", host);
+        })
+        .join("\n") || "无"
+    );
   }
 
   function runDNS(mode) {
