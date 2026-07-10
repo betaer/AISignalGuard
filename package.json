@@ -1,0 +1,22 @@
+{
+  "name": "ai-signal-guard",
+  "version": "1.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite --host 127.0.0.1",
+    "clean:sites": "node scripts/clean-sites-build.mjs",
+    "build": "npm run clean:sites && WRANGLER_LOG_PATH=.wrangler/wrangler.log vite build",
+    "preview": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite preview --host 127.0.0.1",
+    "test": "npm run build && node --test tests/sites-worker.test.mjs",
+    "check": "node --check app.js && node --check app.min.js && npm test"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.44.0",
+    "vite": "8.1.4",
+    "wrangler": "4.110.0"
+  }
+}

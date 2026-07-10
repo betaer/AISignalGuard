@@ -1,4 +1,10 @@
 .playwright-cli/
+.learnings/
+node_modules/
 output/
 tuiguang/
 .DS_Store
+dist/client/
+dist/server/
+dist/.openai/
+.wrangler/
