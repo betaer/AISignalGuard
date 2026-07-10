@@ -2,7 +2,7 @@
 
 AI Signal Guard 是一个纯静态的浏览器端 AI 网络与身份信号体检工具。打开网页后，它会从浏览器可见角度检查出口 IP、DNS/WebRTC 泄漏、语言与时区一致性、AI 站点访问路径、服务状态和浏览器指纹，帮助你在使用 ChatGPT、Claude、Gemini、Perplexity 等服务前快速判断当前环境是否自洽。
 
-![social-preview.svg](assets/social-preview.svg)
+![social-preview.svg](assets/social-preview.png)
 
 在线体验：[https://betaer.github.io/AISignalGuard/](https://betaer.github.io/AISignalGuard/)  
 
