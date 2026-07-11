@@ -2615,6 +2615,68 @@
     ].join("\n");
   }
 
+  function scoreStatusLabel(status) {
+    if (status === "neutral") {
+      return "中性";
+    }
+    return statusText[statusClass(status)] || "检测中";
+  }
+
+  function scoreRowStatus(id) {
+    var row = state.rows[id] || {};
+    if (!Object.keys(row).length || row.status === "pending") {
+      return "检测中";
+    }
+    if (id === "ip") {
+      if (row.isCN) {
+        return "高危 · 出口在中国口径内";
+      }
+      if (row.host) {
+        return "一般 · 机房 / VPN / 代理池特征";
+      }
+      if (row.status === "green") {
+        return "可信 · 未见高风险出口";
+      }
+      return "一般 · 出口 IP 未完整测出";
+    }
+    if (id === "dns") {
+      if (state.dns.cnHit) {
+        return "高危 · 命中中国解析器";
+      }
+      if (row.status === "green") {
+        return "可信 · 未见中国解析器";
+      }
+    }
+    return scoreStatusLabel(row.status) + " · " + (row.value || "未完整测出");
+  }
+
+  function scoreNetworkStatus() {
+    var verdict = networkVerdict();
+    if (verdict.result === true) {
+      return "高危 · 疑似大陆直连";
+    }
+    if (verdict.result === false) {
+      return "可信 · 未见大陆直连";
+    }
+    if (verdict.status === "amber") {
+      return "未确认 · 网络探针不可判定";
+    }
+    return "检测中";
+  }
+
+  function scoreAiPathStatus() {
+    if (!state.aipath.length || state.aipath.some(function (item) { return item.status === "pending"; })) {
+      return "检测中";
+    }
+    if (state.aipath.some(function (item) { return item.status === "red"; })) {
+      return "高危 · AI 路径命中中国出口";
+    }
+    if (state.aipath.some(function (item) { return item.status === "amber"; })) {
+      return "一般 · AI 路径部分无法读取";
+    }
+    return "可信 · AI 路径未见中国出口";
+  }
+
   function scoreSegmentData() {
     var ip = state.rows.ip || {};
     var lang = state.rows.lang || {};
@@ -2660,7 +2722,7 @@
         max: 35,
         penalty: ipPenalty,
         status: !hasRows || ip.status === "pending" ? "pending" : ipPenalty >= 35 ? "red" : ipPenalty ? "amber" : "green",
-        detail: rowShareStatus("ip")
+        detail: scoreRowStatus("ip")
       },
       {
         id: "identity",
@@ -2696,7 +2758,7 @@
             : leakPenalty
               ? "red"
               : "green",
-        detail: "DNS：" + rowShareStatus("dns") + "；WebRTC：" + rowShareStatus("webrtc")
+        detail: "DNS：" + scoreRowStatus("dns") + "；WebRTC：" + scoreRowStatus("webrtc")
       },
       {
         id: "conn",
@@ -2705,7 +2767,7 @@
         max: 20,
         penalty: connPenalty,
         status: verdict.status,
-        detail: networkShareStatus() + "。此项只看全球站点 · 常被墙与中国站点的可达性，不使用 AI 平台服务稳定性。"
+        detail: scoreNetworkStatus() + "。此项只看全球站点 · 常被墙与中国站点的可达性，不使用 AI 平台服务稳定性。"
       },
       {
         id: "ai",
@@ -2714,7 +2776,7 @@
         max: 15,
         penalty: aiPenalty,
         status: aiPending ? "pending" : aiPenalty ? "red" : aiAmber ? "amber" : "green",
-        detail: aiPathShareStatus()
+        detail: scoreAiPathStatus()
       },
       {
         id: "multi",
