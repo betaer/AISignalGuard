@@ -110,6 +110,8 @@ const FAKE_WEBRTC_INIT = `
  * 全量确定性路由。所有外部请求都被本地 fixture 接管，杜绝真实网络抖动。
  * opts.flags 是可变对象：{ blockIpSources } 可在场景中途切换。
  * opts.ipDelays: { [hostSubstring]: ms } 指定 IP 情报源的响应延迟。
+ * opts.allowedIpHosts: 仅允许指定 IP 情报主机返回，用于验证来源接管。
+ * opts.ipPayloadByHost: { [host]: overrides } 为指定来源覆盖标准 fixture 字段。
  * opts.ipv6First: api6.ipify 立即返回 IPv6（配合 ipDelays 模拟双栈切换）。
  * opts.hangOpenaiStatus: status.openai.com 挂 9 秒后 abort（fallback 竞态用例）。
  */
@@ -129,6 +131,9 @@ async function routeFixtures(target, baseOrigin, opts = {}) {
     const isIpIntel = IP_INTEL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
     if (isIpIntel) {
       if (flags.blockIpSources) {
+        return route.abort().catch(() => {});
+      }
+      if (opts.allowedIpHosts && !opts.allowedIpHosts.includes(host)) {
         return route.abort().catch(() => {});
       }
       if (opts.ipv6First && host === "api6.ipify.org") {
@@ -155,7 +160,10 @@ async function routeFixtures(target, baseOrigin, opts = {}) {
           isp: HOSTING_ORG,
         });
       }
-      return json(ipPayload(opts.ipOverrides));
+      return json(ipPayload({
+        ...opts.ipOverrides,
+        ...(opts.ipPayloadByHost?.[host] || {}),
+      }));
     }
     if (host === "bash.ws") {
       if (url.pathname === "/id") {
@@ -272,6 +280,60 @@ const scenarios = [
       const hongKongCopied = await hongKongPage.evaluate(() => window.__copiedSummary);
       ok("Hong Kong exit selects Chinese summary", hongKongCopied.includes("Claude 封号风险检测"), hongKongCopied);
       await hongKongPage.close();
+    },
+  },
+  {
+    name: "出口 IP 质量：忽略仅 IP 快速响应并由更完整来源自动升级",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage();
+      await page.addInitScript(() => {
+        window.__ipSourceTags = [];
+        document.addEventListener("DOMContentLoaded", () => {
+          let last = "";
+          new MutationObserver(() => {
+            const tag = document.querySelector('[data-row="ip"] .row-tag')?.textContent.trim() || "";
+            if (tag && tag !== last) {
+              last = tag;
+              window.__ipSourceTags.push(tag);
+            }
+          }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+        });
+      });
+      await routeFixtures(page, base.origin, {
+        allowedIpHosts: ["api.ipify.org", "ipwho.is", "api.ip.sb"],
+        ipDelays: { "ipwho.is": 1500, "api.ip.sb": 3500 },
+        ipPayloadByHost: {
+          "ipwho.is": { asn: "", org: "", city: "" },
+          "api.ip.sb": { asn: "AS64501", org: "Premium Residential ISP", city: "New York" },
+        },
+      });
+      await page.goto(base.href);
+
+      await page.waitForFunction(
+        () => document.querySelector('[data-row="ip"] .row-tag')?.textContent.trim() === "ipwho.is",
+        null,
+        { timeout: 5000 },
+      );
+      const tagsAfterGeo = await page.evaluate(() => window.__ipSourceTags);
+      ok(
+        "IP-only response stays provisional",
+        !tagsAfterGeo.includes("ipify.org"),
+        JSON.stringify(tagsAfterGeo),
+      );
+      ok(
+        "first geo-complete source takes over",
+        tagsAfterGeo[0] === "ipwho.is",
+        JSON.stringify(tagsAfterGeo),
+      );
+
+      await page.waitForFunction(
+        () => document.querySelector('[data-row="ip"] .row-tag')?.textContent.trim() === "ip.sb",
+        null,
+        { timeout: 5000 },
+      );
+      const finalTags = await page.evaluate(() => window.__ipSourceTags);
+      ok("later higher-quality source upgrades card", finalTags.at(-1) === "ip.sb", JSON.stringify(finalTags));
+      await page.close();
     },
   },
   {

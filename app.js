@@ -741,6 +741,7 @@
       ip: ip,
       cc: normalizedCc,
       country: countryText || "未返回地区",
+      city: city || "—",
       geo: [city, normalizedCc].filter(Boolean).join(" · ") || "—",
       asn: asn ? String(asn).replace(/^AS/i, "AS") : "—",
       org: org || "—",
@@ -1262,18 +1263,18 @@
       }, 2600);
     }
 
-    function applyIpResults(results) {
+    function applyIpResults(results, allowIncomplete) {
       if (!isModuleRun("ip", token, runId)) {
         return false;
       }
-      var ipResults = uniqueIpResults(results);
-      var result = ipResults[0] || results[0];
+      var ipResults = bestIpResultsByVersion(results, !allowIncomplete);
+      var result = ipResults[0];
       if (!result || !result.ok || !result.ip) {
         return false;
       }
       var appliedKey = ipResults
         .map(function (item) {
-          return item.source + ":" + item.ip;
+          return item.source + ":" + item.ip + ":" + ipResultQuality(item);
         })
         .join("|");
       if (appliedKey && appliedKey === lastAppliedKey) {
@@ -1303,23 +1304,20 @@
       return true;
     }
 
+    var candidates = [];
     var probes = sources.map(function (task) {
       return task()
         .then(function (result) {
-          return result && result.ok ? result : null;
+          if (!result || !result.ok || (!isIpv4Address(result.ip) && !isIpv6Address(result.ip))) {
+            return null;
+          }
+          candidates.push(result);
+          applyIpResults(candidates, false);
+          return result;
         })
         .catch(function () {
           return null;
         });
-    });
-
-    firstResolvedResult(probes).then(function (result) {
-      if (!isModuleRun("ip", token, runId)) {
-        return;
-      }
-      if (result) {
-        applyIpResults([result]);
-      }
     });
 
     Promise.all(probes)
@@ -1330,7 +1328,7 @@
         var successful = results.filter(function (result) {
           return result && result.ok;
         });
-        if (!successful.length || !applyIpResults(successful)) {
+        if (!successful.length || !applyIpResults(successful, true)) {
           throw new Error("empty result");
         }
       })
@@ -1355,55 +1353,65 @@
       });
   }
 
-  function firstResolvedResult(promises) {
-    return new Promise(function (resolve) {
-      var settled = false;
-      var remaining = promises.length;
-      if (!remaining) {
-        resolve(null);
-        return;
-      }
-      promises.forEach(function (promise) {
-        promise
-          .then(function (result) {
-            if (settled) {
-              return;
-            }
-            if (result) {
-              settled = true;
-              resolve(result);
-              return;
-            }
-            remaining -= 1;
-            if (remaining === 0) {
-              resolve(null);
-            }
-          })
-          .catch(function () {
-            if (settled) {
-              return;
-            }
-            remaining -= 1;
-            if (remaining === 0) {
-              resolve(null);
-            }
-          });
-      });
-    });
+  var IP_SOURCE_PRIORITY = [
+    "ipwho.is",
+    "ip.sb",
+    "ipinfo.io",
+    "geojs.io",
+    "db-ip.com",
+    "ipapi.is",
+    "country.is",
+    "ipify.org",
+    "ipify64.org",
+    "ipify6.org"
+  ];
+
+  function meaningfulIpField(value) {
+    var text = String(value || "").trim();
+    return Boolean(text && !/^(?:—|未知|unknown|未返回地区)$/i.test(text));
   }
 
-  function uniqueIpResults(results) {
-    var seen = {};
-    return results.filter(function (result) {
-      if (!result || !result.ip || seen[result.ip]) {
-        return false;
-      }
-      if (!isIpv4Address(result.ip) && !isIpv6Address(result.ip)) {
-        return false;
-      }
-      seen[result.ip] = true;
+  function ipResultQuality(result) {
+    if (!result || (!isIpv4Address(result.ip) && !isIpv6Address(result.ip))) {
+      return -1;
+    }
+    return (
+      (meaningfulIpField(result.cc) ? 40 : 0) +
+      (meaningfulIpField(result.country) ? 10 : 0) +
+      (meaningfulIpField(result.asn) ? 20 : 0) +
+      (meaningfulIpField(result.org) ? 20 : 0) +
+      (meaningfulIpField(result.city) ? 10 : 0)
+    );
+  }
+
+  function ipSourcePriority(source) {
+    var index = IP_SOURCE_PRIORITY.indexOf(source);
+    return index >= 0 ? index : IP_SOURCE_PRIORITY.length;
+  }
+
+  function betterIpResult(candidate, current) {
+    if (!current) {
       return true;
+    }
+    var qualityDelta = ipResultQuality(candidate) - ipResultQuality(current);
+    if (qualityDelta !== 0) {
+      return qualityDelta > 0;
+    }
+    return ipSourcePriority(candidate.source) < ipSourcePriority(current.source);
+  }
+
+  function bestIpResultsByVersion(results, requireGeo) {
+    var best = {};
+    (results || []).forEach(function (result) {
+      var version = isIpv4Address(result && result.ip) ? "ipv4" : isIpv6Address(result && result.ip) ? "ipv6" : "";
+      if (!version || (requireGeo && !meaningfulIpField(result.cc))) {
+        return;
+      }
+      if (betterIpResult(result, best[version])) {
+        best[version] = result;
+      }
     });
+    return [best.ipv4, best.ipv6].filter(Boolean);
   }
 
   function ipVersionLabel(ip) {
