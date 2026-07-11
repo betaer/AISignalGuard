@@ -9,9 +9,9 @@ const STATIC_FILES = [
 ];
 
 const LEGACY_SUMMARY_URL =
-  /"在线检测：https:\/\/betaer\.github\.io\/AiSignalGuard\/"/g;
+  /"https:\/\/betaer\.github\.io\/AiSignalGuard\/"/g;
 const RUNTIME_SUMMARY_URL =
-  '"在线检测：" + new URL(".", window.location.href).href';
+  'new URL(".", window.location.href).href';
 
 async function exists(path) {
   try {

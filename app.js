@@ -454,6 +454,31 @@
     return cc === "CN";
   }
 
+  function isChineseShareCountry(value) {
+    var country = String(value || "").trim().toUpperCase();
+    return (
+      ["CN", "HK", "MO"].indexOf(country) >= 0 ||
+      /\bCHINA\b|HONG KONG|MACAU|MACAO|中国|香港|澳门/.test(country)
+    );
+  }
+
+  function isChineseShareTimezone(timeZone) {
+    return [
+      "Asia/Shanghai",
+      "Asia/Urumqi",
+      "Asia/Chongqing",
+      "Asia/Harbin",
+      "Asia/Kashgar",
+      "Asia/Beijing",
+      "PRC",
+      "Asia/Hong_Kong",
+      "Asia/Macau",
+      "Asia/Macao",
+      "Hongkong",
+      "Macao"
+    ].indexOf(String(timeZone || "")) >= 0;
+  }
+
   function isChinaTimezone(timeZone) {
     var zone = String(timeZone || "");
     var mainland = [
@@ -3033,113 +3058,143 @@
     return "检测完成！\n发现 " + flags.length + " 项需要留意的信号！";
   }
 
-  function shareStatusLabel(status) {
-    if (status === "neutral") {
-      return "中性";
-    }
-    return statusText[statusClass(status)] || "检测中";
+  var SHARE_RISK_EN = {
+    "出口 IP 在中国口径内": "China-region exit IP",
+    "机房 / VPN 出口": "Datacenter/VPN exit",
+    "出口 IP 未完整测出": "Incomplete exit IP data",
+    "DNS 中国解析器": "China-region DNS resolver",
+    "大陆直连": "Direct mainland China connection",
+    "WebRTC 出口外公网候选": "WebRTC IP mismatch",
+    "信号前后矛盾": "Conflicting identity signals",
+    "语言含中文": "Chinese browser language",
+    "时区在中国": "China-region timezone",
+    "AI 路径出口在中国": "China-region AI egress",
+    "多源 IP 情报冲突": "Conflicting IP intelligence"
+  };
+
+  var SHARE_SCORE_EN = {
+    green: "Trusted",
+    amber: "Fair",
+    red: "High risk",
+    pending: "Checking"
+  };
+
+  function shouldUseChineseShareSummary() {
+    var languageValue = String((state.rows.lang || {}).value || "");
+    var ipCountry = (state.rows.ip || {}).country;
+    var timezone = (state.rows.tz || {}).value;
+    var dnsHasChineseRegion = (state.dns.servers || []).some(function (server) {
+      return isChineseShareCountry(server.country);
+    });
+    var aiPathHasChineseRegion = state.aipath.some(function (item) {
+      return (item.locs || [item.loc]).some(isChineseShareCountry);
+    });
+    return (
+      /(^|[\s·,])zh(?:-|$)/i.test(languageValue) ||
+      isChineseShareCountry(ipCountry) ||
+      isChineseShareTimezone(timezone) ||
+      dnsHasChineseRegion ||
+      networkVerdict().result === true ||
+      aiPathHasChineseRegion
+    );
   }
 
-  function rowShareStatus(id) {
-    var row = state.rows[id] || {};
-    if (!Object.keys(row).length || row.status === "pending") {
-      return "检测中";
-    }
-    if (id === "ip") {
-      if (row.isCN) {
-        return "高危 · 出口在中国口径内";
-      }
-      if (row.host) {
-        return "一般 · 机房 / VPN / 代理池特征";
-      }
-      if (row.status === "green") {
-        return "可信 · 未见高风险出口";
-      }
-      return "一般 · 出口 IP 未完整测出";
-    }
-    if (id === "dns") {
-      if (state.dns.cnHit) {
-        return "高危 · 命中中国解析器";
-      }
-      if (row.status === "green") {
-        return "可信 · 未见中国解析器";
-      }
-      return shareStatusLabel(row.status) + " · " + (row.value || "未完整测出");
-    }
-    if (id === "webrtc") {
-      return shareStatusLabel(row.status) + " · " + (row.value || "未完整测出");
-    }
-    if (id === "consistency") {
-      return shareStatusLabel(row.status) + " · " + (row.value || "未完整测出");
-    }
-    return shareStatusLabel(row.status);
-  }
-
-  function networkShareStatus() {
+  function conciseNetworkShareStatus(chinese) {
     var verdict = networkVerdict();
     if (verdict.result === true) {
-      return "高危 · 疑似大陆直连";
+      return chinese ? "疑似大陆直连" : "Possible direct mainland China connection";
     }
     if (verdict.result === false) {
-      return "可信 · 未见大陆直连";
+      return chinese ? "未见大陆直连" : "No direct mainland China connection detected";
     }
     if (verdict.status === "amber") {
-      return "未确认 · 网络探针不可判定";
+      return chinese ? "未确认" : "Unconfirmed";
     }
-    return "检测中";
+    return chinese ? "检测中" : "Checking";
   }
 
-  function aiPathShareStatus() {
-    if (!state.aipath.length) {
-      return "检测中";
+  function conciseAiPathShareStatus(chinese) {
+    if (!state.aipath.length || state.aipath.some(function (item) { return item.status === "pending"; })) {
+      return chinese ? "检测中" : "Checking";
     }
-    if (
-      state.aipath.some(function (item) {
-        return item.status === "red";
-      })
-    ) {
-      return "高危 · AI 路径命中中国出口";
+    if (state.aipath.some(function (item) { return item.status === "red"; })) {
+      return chinese ? "命中中国出口" : "China-region egress detected";
     }
-    if (
-      state.aipath.some(function (item) {
-        return item.status === "pending";
-      })
-    ) {
-      return "检测中";
+    if (state.aipath.some(function (item) { return item.status === "amber"; })) {
+      return chinese ? "部分未确认" : "Partially unconfirmed";
     }
-    if (
-      state.aipath.some(function (item) {
-        return item.status === "amber";
-      })
-    ) {
-      return "一般 · AI 路径部分无法读取";
+    return chinese ? "未见中国出口" : "No China egress detected";
+  }
+
+  function twitterTextWeight(text) {
+    var urlPattern = /https?:\/\/\S+/g;
+    var weight = 0;
+    var cursor = 0;
+    var match;
+    function plainWeight(value) {
+      return Array.from(value).reduce(function (sum, char) {
+        return sum + (char.codePointAt(0) <= 0x10ff ? 1 : 2);
+      }, 0);
     }
-    return "可信 · AI 路径未见中国出口";
+    while ((match = urlPattern.exec(text))) {
+      weight += plainWeight(text.slice(cursor, match.index)) + 23;
+      cursor = match.index + match[0].length;
+    }
+    return weight + plainWeight(text.slice(cursor));
+  }
+
+  function fitShareRisks(buildText, risks, chinese) {
+    if (!risks.length) {
+      return chinese ? "未发现明显风险信号" : "No obvious risk signals";
+    }
+    var included = [];
+    for (var index = 0; index < risks.length; index += 1) {
+      var candidate = included.concat(risks[index]);
+      var remaining = risks.length - candidate.length;
+      var suffix = remaining ? (chinese ? "、等 " + remaining + " 项" : ", and " + remaining + " more") : "";
+      if (twitterTextWeight(buildText(candidate.join(chinese ? "、" : ", ") + suffix)) <= 280) {
+        included = candidate;
+      } else {
+        break;
+      }
+    }
+    var omitted = risks.length - included.length;
+    if (!included.length) {
+      return chinese ? "共 " + risks.length + " 项风险" : risks.length + " risk signals";
+    }
+    return included.join(chinese ? "、" : ", ") +
+      (omitted ? (chinese ? "、等 " + omitted + " 项" : ", and " + omitted + " more") : "");
   }
 
   function diagnosticSummaryText() {
     var ready = scoreReady();
-    var scoreText = ready ? state.score + "/100（" + statusText[scoreKey(state.score)] + "）" : "检测中";
-    var flags = collectRiskFlags();
-    return [
-      "AI Signal Guard 诊断摘要",
-      "信任分：" + scoreText,
-      "判定口径：" + diagnosticRegionLabel(),
-      "风险项：" + (flags.length ? flags.join(" / ") : "未发现明显暴露信号"),
-      "出口 IP：" + rowShareStatus("ip"),
-      "身份一致性：" + rowShareStatus("consistency"),
-      "WebRTC：" + rowShareStatus("webrtc"),
-      "DNS：" + rowShareStatus("dns"),
-      "网络连通：" + networkShareStatus(),
-      "AI 路径：" + aiPathShareStatus(),
-      "",
-      "在线检测：https://betaer.github.io/AiSignalGuard/",
-      "开源仓库：https://github.com/betaer/AiSignalGuard"
-    ].join("\n");
-  }
-
-  function diagnosticRegionLabel() {
-    return state.region === "cnhk" ? "中国大陆 + 香港 + 澳门，不含台湾" : "仅中国大陆，不含台湾";
+    var items = collectRiskItems();
+    var chinese = shouldUseChineseShareSummary();
+    var highRisk = items.some(function (item) { return item.severity === "red"; });
+    var title = ready
+      ? (highRisk ? "⚠️ " : "") + (chinese ? "Claude 封号风险检测" : "Claude Account Risk Check")
+      : chinese ? "Claude 使用环境检测中" : "Checking Your Claude Environment";
+    var score = ready
+      ? state.score + "/100" + (chinese
+        ? "（" + statusText[scoreKey(state.score)] + "）"
+        : " (" + SHARE_SCORE_EN[scoreKey(state.score)] + ")")
+      : chinese ? "检测中" : "Checking";
+    var risks = items.map(function (item) {
+      return chinese ? item.label.replace(/\s*\/\s*/g, "/") : (SHARE_RISK_EN[item.label] || item.label);
+    });
+    function build(riskText) {
+      return [
+        title,
+        "",
+        (chinese ? "信任分：" : "Trust score: ") + score,
+        (chinese ? "风险：" : "Risks: ") + riskText,
+        (chinese ? "网络：" : "Network: ") + conciseNetworkShareStatus(chinese),
+        (chinese ? "AI 路径：" : "AI routes: ") + conciseAiPathShareStatus(chinese),
+        "",
+        (chinese ? "立即检测：" : "Check yours: ") + "https://betaer.github.io/AiSignalGuard/"
+      ].join("\n");
+    }
+    return build(fitShareRisks(build, risks, chinese));
   }
 
   function render() {

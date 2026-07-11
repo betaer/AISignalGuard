@@ -50,6 +50,37 @@ function ipPayload(overrides = {}) {
   };
 }
 
+function twitterWeightedLength(text) {
+  const urlPattern = /https?:\/\/\S+/g;
+  let length = 0;
+  let cursor = 0;
+  for (const match of text.matchAll(urlPattern)) {
+    length += Array.from(text.slice(cursor, match.index)).reduce(
+      (sum, char) => sum + (char.codePointAt(0) <= 0x10ff ? 1 : 2),
+      0,
+    ) + 23;
+    cursor = match.index + match[0].length;
+  }
+  return length + Array.from(text.slice(cursor)).reduce(
+    (sum, char) => sum + (char.codePointAt(0) <= 0x10ff ? 1 : 2),
+    0,
+  );
+}
+
+async function captureCopiedSummary(page) {
+  await page.addInitScript(() => {
+    window.__copiedSummary = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text) => {
+          window.__copiedSummary = text;
+        },
+      },
+    });
+  });
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Fake RTCPeerConnection：吐出一个不在 fixture 出口列表里的公网 srflx 候选，
@@ -124,7 +155,7 @@ async function routeFixtures(target, baseOrigin, opts = {}) {
           isp: HOSTING_ORG,
         });
       }
-      return json(ipPayload());
+      return json(ipPayload(opts.ipOverrides));
     }
     if (host === "bash.ws") {
       if (url.pathname === "/id") {
@@ -196,6 +227,53 @@ async function scoreNodeSnapshot(page) {
 
 // ---------- 场景定义 ----------
 const scenarios = [
+  {
+    name: "复制摘要：无中国信号时生成 280 字符内英文宣传文案",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({ locale: "en-US", timezoneId: "America/New_York" });
+      await captureCopiedSummary(page);
+      await routeFixtures(page, base.origin);
+      await page.goto(base.href);
+      await waitForScore(page);
+      await page.locator("#copy-summary").click();
+      const copied = await page.evaluate(() => window.__copiedSummary);
+      ok("English share title", copied.startsWith("Claude Account Risk Check"), copied);
+      ok("English CTA retained", copied.includes("Check yours: https://betaer.github.io/AiSignalGuard/"), copied);
+      ok("repository URL removed", !copied.includes("github.com/betaer"), copied);
+      ok("non-core rows hidden", !/^(WebRTC|DNS|Region):/m.test(copied), copied);
+      ok("English share within X budget", twitterWeightedLength(copied) <= 280, `length=${twitterWeightedLength(copied)}`);
+      await page.close();
+    },
+  },
+  {
+    name: "复制摘要：中文语言与香港出口均触发中文宣传文案",
+    async run({ browser, base, ok }) {
+      const chinesePage = await browser.newPage({ locale: "zh-CN", timezoneId: "America/New_York" });
+      await captureCopiedSummary(chinesePage);
+      await routeFixtures(chinesePage, base.origin);
+      await chinesePage.goto(base.href);
+      await waitForScore(chinesePage);
+      await chinesePage.locator("#copy-summary").click();
+      const chineseCopied = await chinesePage.evaluate(() => window.__copiedSummary);
+      ok("Chinese locale selects Chinese summary", chineseCopied.includes("Claude 封号风险检测"), chineseCopied);
+      ok("Chinese CTA retained", chineseCopied.includes("立即检测：https://betaer.github.io/AiSignalGuard/"), chineseCopied);
+      ok("Chinese share within X budget", twitterWeightedLength(chineseCopied) <= 280, `length=${twitterWeightedLength(chineseCopied)}`);
+      await chinesePage.close();
+
+      const hongKongPage = await browser.newPage({ locale: "en-US", timezoneId: "America/New_York" });
+      await captureCopiedSummary(hongKongPage);
+      await routeFixtures(hongKongPage, base.origin, {
+        ipOverrides: { country_code: "HK", country: "Hong Kong" },
+      });
+      await hongKongPage.goto(base.href);
+      await hongKongPage.locator('[data-region="cnhk"]').click();
+      await waitForScore(hongKongPage);
+      await hongKongPage.locator("#copy-summary").click();
+      const hongKongCopied = await hongKongPage.evaluate(() => window.__copiedSummary);
+      ok("Hong Kong exit selects Chinese summary", hongKongCopied.includes("Claude 封号风险检测"), hongKongCopied);
+      await hongKongPage.close();
+    },
+  },
   {
     name: "baseline: fixture 环境评分完成且识别机房出口",
     async run({ browser, base, ok }) {
