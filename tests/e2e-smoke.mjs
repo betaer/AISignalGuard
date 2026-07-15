@@ -748,26 +748,81 @@ const scenarios = [
       await page.goto(base.href);
       await page.locator("#identity-generic").click();
       await waitForScore(page);
+      await page.evaluate(() => {
+        document.documentElement.style.scrollBehavior = "auto";
+        document.querySelector("#sec-score")?.scrollIntoView();
+      });
+      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "sec-score");
       await page.locator('[data-identity-action="reselect"]').click();
+      const staleNavigationPrepared = await page.evaluate(() => {
+        const hiddenNetworkLink = document.querySelector('.nav-item[data-nav="sec-score"]');
+        hiddenNetworkLink.onclick();
+        const active = document.querySelector(".nav-item.is-active");
+        return {
+          active: active?.dataset.nav,
+          current: active?.getAttribute("aria-current"),
+          hash: location.hash,
+          historyLength: history.length,
+        };
+      });
+      ok(
+        "reselection test starts the next analysis from a stale non-identity navigation state",
+        staleNavigationPrepared.active === "sec-score" &&
+          staleNavigationPrepared.current === "location" &&
+          staleNavigationPrepared.hash === "#sec-score",
+        JSON.stringify(staleNavigationPrepared),
+      );
       const requestStart = requests.length;
       await page.locator('input[value="ai_worker"]').check();
-      await page.locator("#identity-start").click();
-      const runningStage = await page.evaluate(() => ({
-        stage: document.body.dataset.appStage,
-        progressVisible: !document.querySelector("#analysis-progress")?.hidden,
-        workspaceHidden: Boolean(document.querySelector("#analysis-workspace")?.hidden),
-      }));
+      const runningStage = await page.locator("#identity-start").evaluate((button, staleHistoryLength) => {
+        button.click();
+        const active = document.querySelector(".nav-item.is-active");
+        return {
+          stage: document.body.dataset.appStage,
+          progressVisible: !document.querySelector("#analysis-progress")?.hidden,
+          workspaceHidden: Boolean(document.querySelector("#analysis-workspace")?.hidden),
+          active: active?.dataset.nav,
+          current: active?.getAttribute("aria-current"),
+          currentCount: document.querySelectorAll('.nav-item[aria-current="location"]').length,
+          hash: location.hash,
+          historyLength: history.length,
+          staleHistoryLength,
+        };
+      }, staleNavigationPrepared.historyLength);
       ok(
         "reselection immediately enters a clean running stage",
-        runningStage.stage === "running" && runningStage.progressVisible && runningStage.workspaceHidden,
+        runningStage.stage === "running" &&
+          runningStage.progressVisible &&
+          runningStage.workspaceHidden &&
+          runningStage.active === "identity-result-root" &&
+          runningStage.current === "location" &&
+          runningStage.currentCount === 1 &&
+          runningStage.hash === "#identity-result-root" &&
+          runningStage.historyLength === runningStage.staleHistoryLength,
         JSON.stringify(runningStage),
       );
       await waitForScore(page);
       await page.waitForSelector('#analysis-workspace:not([hidden])');
+      const resetNavigation = await page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll("#nav-list .nav-item"));
+        const active = document.querySelector("#nav-list .nav-item.is-active");
+        return {
+          first: links[0]?.dataset.nav,
+          active: active?.dataset.nav,
+          current: active?.getAttribute("aria-current"),
+        };
+      });
       const refreshed = requests.slice(requestStart);
       const reranCoreIp = refreshed.some((requestUrl) => IP_INTEL_HOSTS.includes(new URL(requestUrl).hostname));
       const refreshedAiServices = refreshed.some((requestUrl) => /cursor|perplexity|github|npmjs|pypi/.test(requestUrl));
       ok("reselection returns to the result workspace after a clean run", await page.locator("#analysis-progress").isHidden(), "progress stage should be hidden after completion");
+      ok(
+        "reselection resets the first navigation item to the new identity result",
+        resetNavigation.first === "identity-result-root" &&
+          resetNavigation.active === "identity-result-root" &&
+          resetNavigation.current === "location",
+        JSON.stringify(resetNavigation),
+      );
       ok("reselection reruns core IP evidence", reranCoreIp, refreshed.join(" | ").slice(0, 500));
       ok("reselection refreshes the newly selected profile services", refreshedAiServices, refreshed.join(" | ").slice(0, 500));
       await page.close();
@@ -1445,6 +1500,22 @@ const scenarios = [
         const dock = document.querySelector("#floating-actions");
         const actions = Array.from(dock?.querySelectorAll(".floating-action") || []);
         const home = document.querySelector(".brand-home");
+        const contrastWithPaper = (node) => {
+          const rgb = (getComputedStyle(node).color.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+          const luminance = (values) => {
+            const channels = values.map((value) => {
+              const channel = value / 255;
+              return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+          };
+          const foreground = luminance(rgb);
+          const background = luminance([247, 247, 245]);
+          return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+        };
+        const brandSub = document.querySelector(".brand-sub");
+        const inactiveNav = document.querySelector(".nav-item:not(.is-active)");
+        const navItems = Array.from(document.querySelectorAll("#nav-list .nav-item"));
         return {
           ids: actions.map((action) => action.id),
           svgCount: actions.filter((action) => action.querySelector("svg")).length,
@@ -1454,6 +1525,11 @@ const scenarios = [
           homeHref: home?.getAttribute("href"),
           homeBorder: home ? getComputedStyle(home).borderBottomStyle : "missing",
           subtitle: document.querySelector(".brand-sub")?.textContent.trim(),
+          activeNav: document.querySelector(".nav-item.is-active")?.textContent.trim(),
+          activeCurrent: document.querySelector(".nav-item.is-active")?.getAttribute("aria-current"),
+          navOrder: navItems.map((link) => ({ id: link.dataset.nav, href: link.getAttribute("href") })),
+          brandSubContrast: contrastWithPaper(brandSub),
+          inactiveNavContrast: contrastWithPaper(inactiveNav),
           footer: document.querySelector(".site-footer")?.textContent.trim(),
           title: document.title,
           description: document.querySelector('meta[name="description"]')?.content,
@@ -1469,6 +1545,68 @@ const scenarios = [
         "all eight actions have SVG icons and accessible names",
         staticAudit.svgCount === 8 && staticAudit.namedCount === 8,
         `svg=${staticAudit.svgCount}, named=${staticAudit.namedCount}`,
+      );
+      ok(
+        "identity analysis is the first navigation item and owns the initial current state",
+        staticAudit.activeNav === "身份分析" &&
+          staticAudit.activeCurrent === "location" &&
+          staticAudit.navOrder[0]?.id === "identity-result-root" &&
+          staticAudit.navOrder[0]?.href === "#identity-result-root",
+        JSON.stringify({ active: staticAudit.activeNav, current: staticAudit.activeCurrent, first: staticAudit.navOrder[0] }),
+      );
+      ok(
+        "topbar helper text and inactive navigation meet normal-text contrast",
+        staticAudit.brandSubContrast >= 4.5 && staticAudit.inactiveNavContrast >= 4.5,
+        `brand=${staticAudit.brandSubContrast.toFixed(3)}, nav=${staticAudit.inactiveNavContrast.toFixed(3)}`,
+      );
+      await page.evaluate(() => {
+        document.documentElement.style.scrollBehavior = "auto";
+        document.querySelector("#sec-score")?.scrollIntoView();
+      });
+      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.textContent.trim() === "网络风险");
+      ok(
+        "scrolling into network diagnostics updates the navigation state",
+        (await page.locator(".nav-item.is-active").innerText()).trim() === "网络风险",
+        await page.locator(".nav-item.is-active").innerText(),
+      );
+      const identityNav = page.locator('.nav-item[data-nav="identity-result-root"]');
+      await identityNav.focus();
+      const identityHistoryBefore = await page.evaluate(() => history.length);
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "identity-result-root");
+      const identityAnchorAudit = await page.evaluate(() => {
+        const header = document.querySelector(".topbar").getBoundingClientRect();
+        const card = document.querySelector(".identity-summary-card").getBoundingClientRect();
+        const focused = document.activeElement;
+        const active = document.querySelector(".nav-item.is-active");
+        return {
+          headerBottom: header.bottom,
+          cardTop: card.top,
+          focusedNav: focused?.dataset?.nav || "",
+          focusedTag: focused?.tagName || "",
+          current: active?.getAttribute("aria-current"),
+          currentCount: document.querySelectorAll('.nav-item[aria-current="location"]').length,
+          hash: location.hash,
+          historyLength: history.length,
+        };
+      });
+      ok(
+        "keyboard activation keeps focus/current state and positions identity content below the sticky header",
+        identityAnchorAudit.focusedTag === "A" &&
+          identityAnchorAudit.focusedNav === "identity-result-root" &&
+          identityAnchorAudit.current === "location" &&
+          identityAnchorAudit.currentCount === 1 &&
+          identityAnchorAudit.hash === "#identity-result-root" &&
+          identityAnchorAudit.historyLength === identityHistoryBefore &&
+          identityAnchorAudit.cardTop >= identityAnchorAudit.headerBottom + 4,
+        JSON.stringify(identityAnchorAudit),
+      );
+      await page.keyboard.press("Enter");
+      const repeatedIdentityHistory = await page.evaluate(() => ({ hash: location.hash, length: history.length }));
+      ok(
+        "repeated activation of the current navigation item does not add duplicate history entries",
+        repeatedIdentityHistory.hash === "#identity-result-root" && repeatedIdentityHistory.length === identityHistoryBefore,
+        JSON.stringify({ before: identityHistoryBefore, after: repeatedIdentityHistory }),
       );
       ok("top-right privacy and retest controls are removed", staticAudit.topControls === 0, `count=${staticAudit.topControls}`);
       ok("GitHub and Star are removed from the top-right area", staticAudit.topGithub === 0, `count=${staticAudit.topGithub}`);
@@ -1715,6 +1853,34 @@ const scenarios = [
           mobileAudit.touchTargets.every(([width, height]) => width >= 40 && height >= 40),
         JSON.stringify(mobileAudit),
       );
+      await page.evaluate(() => document.querySelector("#sec-score")?.scrollIntoView());
+      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "sec-score");
+      await page.locator('.nav-item[data-nav="identity-result-root"]').focus();
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "identity-result-root");
+      const mobileAnchorAudit = await page.evaluate(() => ({
+        headerBottom: document.querySelector(".topbar").getBoundingClientRect().bottom,
+        cardTop: document.querySelector(".identity-summary-card").getBoundingClientRect().top,
+        focusedNav: document.activeElement?.dataset?.nav || "",
+        current: document.querySelector(".nav-item.is-active")?.getAttribute("aria-current"),
+      }));
+      ok(
+        "mobile identity navigation clears the sticky header and preserves keyboard focus",
+        mobileAnchorAudit.cardTop >= mobileAnchorAudit.headerBottom + 4 &&
+          mobileAnchorAudit.focusedNav === "identity-result-root" &&
+          mobileAnchorAudit.current === "location",
+        JSON.stringify(mobileAnchorAudit),
+      );
+      await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
+      const mobileFooterGap = await page.evaluate(() => {
+        const actionTop = Math.min(
+          ...Array.from(document.querySelectorAll("#floating-actions .floating-action"), (action) =>
+            action.getBoundingClientRect().top,
+          ),
+        );
+        return actionTop - document.querySelector(".site-footer").getBoundingClientRect().bottom;
+      });
+      ok("mobile bottom safe area leaves breathing room above the toolbar", mobileFooterGap >= 8, `gap=${mobileFooterGap}`);
 
       await page.setViewportSize({ width: 568, height: 320 });
       const shortLandscapeAudit = await page.locator("#floating-actions").evaluate((dock) => {
@@ -1793,6 +1959,33 @@ const scenarios = [
         JSON.stringify(narrowAudit),
       );
 
+      await page.setViewportSize({ width: 300, height: 700 });
+      const narrowestToolbarAudit = await page.evaluate(() => {
+        const actions = Array.from(document.querySelectorAll("#floating-actions .floating-action"));
+        const primaryActions = actions.filter((action) => action.id !== "github-shortcut");
+        const primaryRects = primaryActions.map((action) => action.getBoundingClientRect());
+        const allRects = actions.map((action) => action.getBoundingClientRect());
+        return {
+          minPrimaryWidth: Math.min(...primaryRects.map((rect) => rect.width)),
+          minPrimaryHeight: Math.min(...primaryRects.map((rect) => rect.height)),
+          primaryRowCount: new Set(primaryRects.map((rect) => Math.round(rect.top))).size,
+          left: Math.min(...allRects.map((rect) => rect.left)),
+          right: Math.max(...allRects.map((rect) => rect.right)),
+          overflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
+          viewportWidth: innerWidth,
+        };
+      });
+      ok(
+        "300px viewport keeps every primary action at least 40px without wrapping or overflow",
+        narrowestToolbarAudit.minPrimaryWidth >= 40 &&
+          narrowestToolbarAudit.minPrimaryHeight >= 40 &&
+          narrowestToolbarAudit.primaryRowCount === 1 &&
+          narrowestToolbarAudit.left >= 0 &&
+          narrowestToolbarAudit.right <= narrowestToolbarAudit.viewportWidth &&
+          narrowestToolbarAudit.overflow === 0,
+        JSON.stringify(narrowestToolbarAudit),
+      );
+
       await page.setViewportSize({ width: 1280, height: 320 });
       await page.evaluate(() => {
         document.documentElement.style.scrollBehavior = "auto";
@@ -1826,6 +2019,7 @@ const scenarios = [
           actionCount: actions.length,
           primaryRowCount: new Set(primaryActions.map((action) => Math.round(action.getBoundingClientRect().top))).size,
           githubAbove: githubRect.bottom <= primaryTop,
+          footerGap: dock.top - footer.bottom,
           intersectsFooter,
         };
       });
@@ -1838,6 +2032,7 @@ const scenarios = [
           shortDesktopAudit.actionCount === 8 &&
           shortDesktopAudit.primaryRowCount === 1 &&
           shortDesktopAudit.githubAbove &&
+          shortDesktopAudit.footerGap >= 8 &&
           !shortDesktopAudit.intersectsFooter,
         JSON.stringify(shortDesktopAudit),
       );
@@ -1853,16 +2048,14 @@ const scenarios = [
       });
       const desktopFooterAudit = await page.evaluate(() => {
         const actions = Array.from(document.querySelectorAll("#floating-actions .floating-action"));
-        const primaryActions = actions.filter((action) => action.id !== "github-shortcut");
-        const github = actions.find((action) => action.id === "github-shortcut");
         const actionRects = actions.map((action) => action.getBoundingClientRect());
-        const githubRect = github.getBoundingClientRect();
-        const primaryTop = Math.min(...primaryActions.map((action) => action.getBoundingClientRect().top));
+        const githubBadge = document.querySelector("#github-shortcut .floating-github-label");
+        const visualRects = [...actionRects, githubBadge.getBoundingClientRect()];
         const dock = {
-          left: Math.min(...actionRects.map((rect) => rect.left)),
-          right: Math.max(...actionRects.map((rect) => rect.right)),
-          top: Math.min(...actionRects.map((rect) => rect.top)),
-          bottom: Math.max(...actionRects.map((rect) => rect.bottom)),
+          left: Math.min(...visualRects.map((rect) => rect.left)),
+          right: Math.max(...visualRects.map((rect) => rect.right)),
+          top: Math.min(...visualRects.map((rect) => rect.top)),
+          bottom: Math.max(...visualRects.map((rect) => rect.bottom)),
         };
         const footer = document.querySelector(".site-footer").getBoundingClientRect();
         const intersectsFooter = !(
@@ -1876,22 +2069,118 @@ const scenarios = [
           footer: { left: footer.left, right: footer.right, top: footer.top, bottom: footer.bottom },
           viewport: { width: innerWidth, height: innerHeight },
           actionCount: actions.length,
-          primaryRowCount: new Set(primaryActions.map((action) => Math.round(action.getBoundingClientRect().top))).size,
-          githubAbove: githubRect.bottom <= primaryTop,
+          columnSpread:
+            Math.max(...actionRects.map((rect) => rect.left)) - Math.min(...actionRects.map((rect) => rect.left)),
+          rowCount: new Set(actionRects.map((rect) => Math.round(rect.top))).size,
+          flexDirection: getComputedStyle(document.querySelector("#floating-actions")).flexDirection,
+          labelsHidden: actions
+            .filter((action) => action.id !== "github-shortcut")
+            .every((action) => getComputedStyle(action.querySelector(".floating-action-label")).display === "none"),
+          githubBadgeVisible:
+            getComputedStyle(githubBadge).display !== "none" &&
+            document.querySelector("#star-count")?.textContent.trim() === "42",
+          footerGap: dock.left - footer.right,
           intersectsFooter,
         };
       });
       ok(
-        "1280x900 desktop leaves the footer unobstructed at the bottom of the page",
+        "1280x900 desktop uses a vertical icon rail and leaves the footer unobstructed",
         desktopFooterAudit.dock.left >= 0 &&
           desktopFooterAudit.dock.right <= desktopFooterAudit.viewport.width &&
           desktopFooterAudit.dock.top >= 0 &&
           desktopFooterAudit.dock.bottom <= desktopFooterAudit.viewport.height &&
           desktopFooterAudit.actionCount === 8 &&
-          desktopFooterAudit.primaryRowCount === 1 &&
-          desktopFooterAudit.githubAbove &&
+          desktopFooterAudit.columnSpread <= 2 &&
+          desktopFooterAudit.rowCount === 8 &&
+          desktopFooterAudit.flexDirection === "column" &&
+          desktopFooterAudit.labelsHidden &&
+          desktopFooterAudit.githubBadgeVisible &&
+          desktopFooterAudit.footerGap >= 5 &&
           !desktopFooterAudit.intersectsFooter,
         JSON.stringify(desktopFooterAudit),
+      );
+
+      await page.setViewportSize({ width: 1200, height: 1280 });
+      await page.locator(".identity-signal-card").last().scrollIntoViewIfNeeded();
+      const desktopContentAudit = await page.evaluate(() => {
+        const actions = Array.from(document.querySelectorAll("#floating-actions .floating-action"));
+        const actionRects = actions.map((action) => action.getBoundingClientRect());
+        const githubBadge = document.querySelector("#github-shortcut .floating-github-label").getBoundingClientRect();
+        const visualRects = [...actionRects, githubBadge];
+        const dock = {
+          left: Math.min(...visualRects.map((rect) => rect.left)),
+          right: Math.max(...visualRects.map((rect) => rect.right)),
+          top: Math.min(...visualRects.map((rect) => rect.top)),
+          bottom: Math.max(...visualRects.map((rect) => rect.bottom)),
+        };
+        const shell = document.querySelector(".shell").getBoundingClientRect();
+        const visibleCards = Array.from(document.querySelectorAll(".identity-signal-card"))
+          .map((card) => card.getBoundingClientRect())
+          .filter((rect) => rect.bottom > 0 && rect.top < innerHeight);
+        const intersectsCard = visibleCards.some(
+          (rect) => !(dock.right <= rect.left || dock.left >= rect.right || dock.bottom <= rect.top || dock.top >= rect.bottom),
+        );
+        return {
+          dock,
+          cardCount: visibleCards.length,
+          cardRight: Math.max(...visibleCards.map((rect) => rect.right)),
+          shellRight: shell.right,
+          columnSpread:
+            Math.max(...actionRects.map((rect) => rect.left)) - Math.min(...actionRects.map((rect) => rect.left)),
+          rowCount: new Set(actionRects.map((rect) => Math.round(rect.top))).size,
+          flexDirection: getComputedStyle(document.querySelector("#floating-actions")).flexDirection,
+          overflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
+          intersectsCard,
+        };
+      });
+      ok(
+        "1200px desktop keeps the vertical toolbar outside visible identity cards",
+        desktopContentAudit.cardCount > 0 &&
+          desktopContentAudit.columnSpread <= 2 &&
+          desktopContentAudit.rowCount === 8 &&
+          desktopContentAudit.flexDirection === "column" &&
+          desktopContentAudit.dock.left - desktopContentAudit.shellRight >= 5 &&
+          desktopContentAudit.dock.left >= desktopContentAudit.cardRight &&
+          desktopContentAudit.overflow === 0 &&
+          !desktopContentAudit.intersectsCard,
+        JSON.stringify(desktopContentAudit),
+      );
+
+      await page.setViewportSize({ width: 721, height: 900 });
+      const tabletAudit = await page.evaluate(() => {
+        const actions = Array.from(document.querySelectorAll("#floating-actions .floating-action"));
+        const actionRects = actions.map((action) => action.getBoundingClientRect());
+        const badgeRect = document.querySelector("#github-shortcut .floating-github-label").getBoundingClientRect();
+        const visualRects = [...actionRects, badgeRect];
+        const dock = {
+          left: Math.min(...visualRects.map((rect) => rect.left)),
+          right: Math.max(...visualRects.map((rect) => rect.right)),
+          top: Math.min(...visualRects.map((rect) => rect.top)),
+          bottom: Math.max(...visualRects.map((rect) => rect.bottom)),
+        };
+        const shell = document.querySelector(".shell").getBoundingClientRect();
+        return {
+          dock,
+          shellRight: shell.right,
+          flexDirection: getComputedStyle(document.querySelector("#floating-actions")).flexDirection,
+          columnSpread:
+            Math.max(...actionRects.map((rect) => rect.left)) - Math.min(...actionRects.map((rect) => rect.left)),
+          rowCount: new Set(actionRects.map((rect) => Math.round(rect.top))).size,
+          overflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
+          viewport: { width: innerWidth, height: innerHeight },
+        };
+      });
+      ok(
+        "721px breakpoint reserves a right-side channel for the vertical toolbar",
+        tabletAudit.flexDirection === "column" &&
+          tabletAudit.columnSpread <= 2 &&
+          tabletAudit.rowCount === 8 &&
+          tabletAudit.dock.left - tabletAudit.shellRight >= 5 &&
+          tabletAudit.dock.right <= tabletAudit.viewport.width &&
+          tabletAudit.dock.top >= 0 &&
+          tabletAudit.dock.bottom <= tabletAudit.viewport.height &&
+          tabletAudit.overflow === 0,
+        JSON.stringify(tabletAudit),
       );
       await page.close();
     },
@@ -2198,7 +2487,12 @@ const scenarios = [
       }
       await ip.click();
       ok("click pins one tooltip", (await ip.getAttribute("aria-expanded")) === "true");
-      await page.waitForTimeout(220);
+      await page.waitForFunction(() => {
+        const node = document.querySelector('[data-score-segment="ip"]');
+        const tip = node?.querySelector(".score-node-tip");
+        const style = tip ? getComputedStyle(tip) : null;
+        return node?.getAttribute("aria-expanded") === "true" && style?.visibility === "visible" && Number(style.opacity) > 0.9;
+      });
       const ipTip = await ip.locator(".score-node-tip").evaluate((tip) => {
         const rect = tip.getBoundingClientRect();
         const style = getComputedStyle(tip);
@@ -2236,7 +2530,19 @@ const scenarios = [
       for (const id of ["ip", "identity", "leak", "conn", "ai", "multi"]) {
         const node = page.locator(`[data-score-segment="${id}"]`);
         await node.click();
-        await page.waitForTimeout(220);
+        await page.waitForFunction(
+          (segment) => {
+            const trigger = document.querySelector(`[data-score-segment="${segment}"]`);
+            const tip = trigger?.querySelector(".score-node-tip");
+            const style = tip ? getComputedStyle(tip) : null;
+            return (
+              trigger?.getAttribute("aria-expanded") === "true" &&
+              style?.visibility === "visible" &&
+              Number(style.opacity) > 0.9
+            );
+          },
+          id,
+        );
         narrowAudit.push(
           await node.locator(".score-node-tip").evaluate((tip, segment) => {
             const rect = tip.getBoundingClientRect();
@@ -2245,6 +2551,10 @@ const scenarios = [
               id: segment,
               visible: style.visibility === "visible" && Number(style.opacity) > 0.9,
               inViewport: rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
+              expanded: tip.parentElement?.getAttribute("aria-expanded"),
+              active: tip.parentElement?.classList.contains("is-active"),
+              pinned: tip.parentElement?.classList.contains("is-pinned"),
+              focused: document.activeElement?.dataset?.scoreSegment || "",
               rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
               viewport: { width: innerWidth, height: innerHeight },
               overflow: document.documentElement.scrollWidth - innerWidth,

@@ -7,6 +7,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
   var RING_CIRCUMFERENCE = 326.726;
   var REPO = "betaer/AiSignalGuard";
   var NAV = [
+    ["identity-result-root", "身份分析"],
     ["sec-score", "网络风险"],
     ["sec-ip", "出口 IP"],
     ["sec-identity", "身份信号"],
@@ -35,7 +36,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     identityAnalysis: null,
     region: "cnhk",
     privacy: false,
-    activeId: "sec-score",
+    activeId: "identity-result-root",
     score: 0,
     displayScore: 0,
     renderPaused: false,
@@ -5523,6 +5524,8 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     state.identityProfileId = profile.id;
     state.identityAnalysis = null;
     state.resultFocusRunId = -1;
+    state.activeId = "identity-result-root";
+    syncNavigationHash(state.activeId, true);
     setAppStage("running");
     runAll();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -5646,19 +5649,35 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     }
     var navList = $("#nav-list");
     if (navList) {
-      navList.innerHTML = NAV.map(function (item) {
-        return (
-          '<a class="nav-item ' +
-          (state.activeId === item[0] ? "is-active" : "") +
-          '" href="#' +
-          item[0] +
-          '" data-nav="' +
-          item[0] +
-          '">' +
-          escapeHtml(item[1]) +
-          "</a>"
-        );
-      }).join("");
+      var navLinks = Array.prototype.slice.call(navList.querySelectorAll(".nav-item"));
+      var navShapeMatches =
+        navLinks.length === NAV.length &&
+        navLinks.every(function (link, index) {
+          return link.dataset.nav === NAV[index][0];
+        });
+      if (!navShapeMatches) {
+        navList.innerHTML = NAV.map(function (item) {
+          return (
+            '<a class="nav-item" href="#' +
+            item[0] +
+            '" data-nav="' +
+            item[0] +
+            '">' +
+            escapeHtml(item[1]) +
+            "</a>"
+          );
+        }).join("");
+        navLinks = Array.prototype.slice.call(navList.querySelectorAll(".nav-item"));
+      }
+      navLinks.forEach(function (link) {
+        var isActive = link.dataset.nav === state.activeId;
+        link.classList.toggle("is-active", isActive);
+        if (isActive) {
+          link.setAttribute("aria-current", "location");
+        } else {
+          link.removeAttribute("aria-current");
+        }
+      });
     }
     document.querySelectorAll(".segmented-button").forEach(function (button) {
       button.classList.toggle("is-active", button.dataset.region === state.region);
@@ -5668,6 +5687,25 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     if (rulesPanel) rulesPanel.hidden = !state.panels.rules;
     if (privacyPanel) privacyPanel.hidden = !state.panels.privacy;
     updateNavScrollHint();
+  }
+
+  function syncNavigationHash(sectionId, replace) {
+    if (!sectionId || !window.location) {
+      return;
+    }
+    var nextHash = "#" + sectionId;
+    if (window.location.hash === nextHash) {
+      return;
+    }
+    if (window.history && window.history.pushState && window.history.replaceState) {
+      window.history[replace ? "replaceState" : "pushState"](null, "", nextHash);
+      return;
+    }
+    if (replace && window.location.replace) {
+      window.location.replace(nextHash);
+      return;
+    }
+    window.location.hash = nextHash;
   }
 
   function renderScore() {
@@ -6700,10 +6738,19 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       });
     });
     document.querySelectorAll("[data-nav]").forEach(function (link) {
-      link.addEventListener("click", function () {
+      link.onclick = function (event) {
+        if (event) {
+          event.preventDefault();
+        }
         state.activeId = link.dataset.nav;
         renderTopbar();
-      });
+        var target = document.getElementById(link.dataset.nav);
+        if (target) {
+          syncNavigationHash(link.dataset.nav, false);
+          target.scrollIntoView({ block: "start" });
+        }
+        link.focus({ preventScroll: true });
+      };
     });
   }
 
