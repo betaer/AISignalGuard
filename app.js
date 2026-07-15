@@ -3926,7 +3926,7 @@
     return (
       '<section class="section" id="sec-fp">' +
       renderSectionHead("浏览器指纹", "浏览器可见环境") +
-      '<div class="panel"><div class="fingerprint-grid">' +
+      '<div class="panel fingerprint-panel"><div class="fingerprint-grid">' +
       rows
         .map(function (row) {
           return (
@@ -3935,11 +3935,11 @@
             '"><div class="fingerprint-key">' +
             escapeHtml(row.key) +
             (row.note
-              ? '<details class="fingerprint-help"><summary title="点击查看说明" aria-label="查看 ' +
+              ? '<span class="fingerprint-help"><span class="fingerprint-help-trigger" tabindex="0" title="悬停查看说明" aria-label="查看 ' +
                 escapeHtml(row.key) +
-                ' 说明">ⓘ</summary><div class="fingerprint-help-bubble">' +
+                ' 说明">ⓘ</span><span class="fingerprint-help-bubble" role="tooltip">' +
                 highlightRiskText(row.note) +
-                "</div></details>"
+                "</span></span>"
               : "") +
             '</div><div class="fingerprint-value ' +
             (row.sensitive ? "sensitive" : "") +
