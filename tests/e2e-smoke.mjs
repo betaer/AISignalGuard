@@ -566,12 +566,16 @@ const scenarios = [
     },
   },
   {
-    name: "网络类型：Google Fiber 的显式住宅标签优先于组织名称启发式",
+    name: "网络类型：显式住宅标签优先于组织名称中的 Hosting / Cloud 启发式",
     async run({ browser, base, ok }) {
       const page = await browser.newPage({ locale: "en-US", timezoneId: "America/Los_Angeles" });
       await routeFixtures(page, base.origin, {
         autoStart: false,
-        ipOverrides: { org: "Google Fiber", aso: "Google Fiber", type: "residential" },
+        ipOverrides: {
+          org: "Google Fiber Hosting Cloud",
+          aso: "Google Fiber Hosting Cloud",
+          type: "residential",
+        },
       });
       await page.goto(base.href);
       await page.locator('input[value="us_consumer"]').check();
@@ -586,6 +590,13 @@ const scenarios = [
         "IP snapshot card prefers the explicit residential type over organization heuristics",
         ipCardType.trim() === "住宅宽带" && !ipCardText.includes("疑似机房"),
         ipCardText.replace(/\s+/g, " ").slice(0, 240),
+      );
+      const ipNode = (await scoreNodeSnapshot(page)).find((node) => node.id === "ip");
+      const insights = await page.locator("#score-insights").innerText();
+      ok(
+        "legacy score also respects the explicit residential type",
+        ipNode?.status === "green" && !insights.includes("机房 / VPN 出口"),
+        `${JSON.stringify(ipNode)}; ${insights.replace(/\s+/g, " ").slice(0, 120)}`,
       );
       await page.close();
     },

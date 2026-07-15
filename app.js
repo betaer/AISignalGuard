@@ -1382,6 +1382,25 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     );
   }
 
+  function hasResidentialNetworkType(value) {
+    return /residential|consumer|fixed(?:\s|-)?line|broadband/i.test(value || "");
+  }
+
+  function hasHostingNetworkType(value) {
+    return /hosting|data.?center|\bcloud\b|server|colo|vps|\bvpn\b|proxy/i.test(value || "");
+  }
+
+  function isHostingIpResult(item) {
+    var type = meaningfulIpField(item && item.type) ? String(item.type) : "";
+    if (hasHostingNetworkType(type)) {
+      return true;
+    }
+    if (hasResidentialNetworkType(type)) {
+      return false;
+    }
+    return Boolean(item && item.hostEvidence) || isHostingOrg([item && item.org, item && item.asn, type].join(" "));
+  }
+
   function isPrivateIp(ip) {
     var value = String(ip || "").toLowerCase();
     return (
@@ -2140,9 +2159,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     var cn = geoResults.some(function (item) {
       return isChinaCountry(item.cc);
     });
-    var host = ipResults.some(function (item) {
-      return item.hostEvidence || isHostingOrg([item.org, item.asn, item.type].join(" "));
-    });
+    var host = ipResults.some(isHostingIpResult);
     var incomplete = ipResults.some(function (item) {
       return !item.countryEvidence || item.countryEvidence.length === 0;
     });
@@ -2555,9 +2572,15 @@ import { analyzeIdentity } from "./identityAnalysis.js";
         return meaningfulIpField(item.org) ? item.org : "";
       })
     );
-    var hostEvidence = evidence.some(function (item) {
-      return isHostingOrg([item.org, item.asn, item.type].join(" "));
-    });
+    var mergedType = types.join(" / ") || best.type || "—";
+    var explicitHostingType = hasHostingNetworkType(mergedType);
+    var explicitResidentialType = hasResidentialNetworkType(mergedType);
+    var hostEvidence =
+      explicitHostingType ||
+      (!explicitResidentialType &&
+        evidence.some(function (item) {
+          return isHostingOrg([item.org, item.asn, item.type].join(" "));
+        }));
     return Object.assign({}, best, {
       ip: ip,
       cc: countryConsensus,
@@ -2582,7 +2605,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       }),
       orgEvidence: orgs,
       hostEvidence: hostEvidence,
-      type: types.join(" / ") || best.type || "—"
+      type: mergedType
     });
   }
 
