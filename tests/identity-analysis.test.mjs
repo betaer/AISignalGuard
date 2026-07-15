@@ -22,7 +22,6 @@ const EXPECTED_PROFILE_IDS = [
   "tiktok_creator",
   "cross_border_seller",
   "ai_worker",
-  "enterprise_employee",
 ];
 
 const BLOCKED_COPY = ["\u4f2a\u88c5", "\u5047\u8eab\u4efd", "\u6b3a\u9a97", "\u5192\u5145"];
@@ -40,7 +39,7 @@ function matchAll(profile, confidence = 1) {
   );
 }
 
-test("\u63d0\u4f9b 6 \u4e2a\u5b8c\u6574\u4e14\u552f\u4e00\u7684\u8eab\u4efd\u753b\u50cf", () => {
+test("提供 5 个完整且唯一的身份画像（通用画像 + 4 个可选画像）", () => {
   assert.deepEqual(
     IDENTITY_PROFILE_LIST.map((profile) => profile.id),
     EXPECTED_PROFILE_IDS,
@@ -90,6 +89,7 @@ test("\u63d0\u4f9b 6 \u4e2a\u5b8c\u6574\u4e14\u552f\u4e00\u7684\u8eab\u4efd\u753
   }
 
   assert.equal(getIdentityProfile("missing"), null);
+  assert.equal(getIdentityProfile("enterprise_employee"), null);
 });
 
 test("\u753b\u50cf\u914d\u7f6e\u4e0e\u5168\u5206\u6bb5\u6587\u6848\u4e0d\u5305\u542b\u8d1f\u9762\u8868\u8fbe\u6216\u771f\u5b9e\u8eab\u4efd\u65ad\u8a00", () => {
@@ -126,7 +126,6 @@ test("画像精确声明需求中的服务及其评分分组", () => {
       ai_services: ["openai", "claude", "gemini", "cursor", "perplexity"],
       developer_services: ["github", "npm", "pypi"],
     },
-    enterprise_employee: { enterprise_services: ["microsoft365", "google_workspace", "github"] },
   };
 
   for (const [profileId, groups] of Object.entries(expected)) {

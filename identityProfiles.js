@@ -146,28 +146,6 @@ function serviceCheck(id, label, targetLabel) {
   );
 }
 
-const ENTERPRISE_NETWORK = check(
-  "enterprise_network",
-  "企业网络特征",
-  "分析 ASN、ISP 与企业办公网络信号。",
-  "网络信号接近企业办公环境",
-  "仅检测到部分企业办公网络特征",
-  "网络信号与目标办公环境存在差异",
-  "尚未确认企业网络特征",
-  "核对公司网络、授权 VPN 与设备管理策略是否处于预期状态。",
-);
-
-const SECURITY = check(
-  "security",
-  "安全环境",
-  "汇总 VPN、代理、泄漏与网络安全信号。",
-  "安全环境信号稳定",
-  "安全环境存在少量待核对项目",
-  "安全环境存在明确的不一致信号",
-  "尚未获得完整的安全环境信号",
-  "优先核对有明确证据支持的 VPN、代理或泄漏项，并遵循组织安全策略。",
-);
-
 function strictUsLocationRule() {
   return {
     id: "target_region_conflict",
@@ -463,54 +441,6 @@ const profiles = [
       requiredSignalGroups: [
         ["ai_services", "developer_services"],
         ["reputation", "network", "dns", "webrtc", "browser", "location"],
-      ],
-    },
-    criticalRules: [],
-  },
-  {
-    id: "enterprise_employee",
-    name: "企业员工",
-    icon: "💼",
-    description: "分析数字环境与海外企业办公用户常见环境的匹配程度。",
-    target: {
-      label: "海外企业办公用户",
-      summarySubject: "海外企业办公用户画像",
-      geography: { mode: "consistent", countryCodes: [], label: "与办公地区一致" },
-      languageTags: [],
-      timezonePrefixes: [],
-      networkTraits: ["enterprise", "managed", "secure"],
-    },
-    weights: {
-      enterprise_network: 25,
-      security: 20,
-      location: 15,
-      timezone: 10,
-      browser: 10,
-      dns: 10,
-      webrtc: 5,
-      enterprise_services: 5,
-    },
-    checks: [
-      ENTERPRISE_NETWORK,
-      SECURITY,
-      LOCATION_CONSISTENCY,
-      TIMEZONE,
-      BROWSER,
-      DNS,
-      WEBRTC,
-      serviceCheck("enterprise_services", "办公服务", "企业办公"),
-    ],
-    serviceIds: ["microsoft365", "google_workspace", "github"],
-    serviceGroups: [
-      {
-        checkId: "enterprise_services",
-        serviceIds: ["microsoft365", "google_workspace", "github"],
-      },
-    ],
-    scoreReadiness: {
-      requiredSignalGroups: [
-        ["enterprise_network", "security", "enterprise_services"],
-        ["location", "timezone", "browser", "dns", "webrtc"],
       ],
     },
     criticalRules: [],

@@ -432,7 +432,7 @@ body[data-app-stage="result"] .analysis-progress {
 .identity-card-grid {
   display: grid;
   min-width: 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -479,16 +479,9 @@ body[data-app-stage="result"] .analysis-progress {
   transform: translateY(-3px);
 }
 
-.identity-card:focus-within {
-  outline: 3px solid rgba(34, 143, 70, 0.2);
-  outline-offset: 3px;
-}
-
 .identity-card:has(.identity-radio:checked) {
-  border-color: var(--green);
-  box-shadow:
-    0 0 0 1px var(--green),
-    0 18px 38px rgba(34, 143, 70, 0.1);
+  border: 2px solid var(--status-green-ink);
+  box-shadow: 0 12px 30px rgba(31, 31, 25, 0.075);
   background: linear-gradient(180deg, #ffffff, #f7fbf7);
 }
 
@@ -887,6 +880,30 @@ body[data-app-stage="result"] .analysis-progress {
   border-right: 0;
 }
 
+.identity-signal-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.identity-signal-card,
+.identity-signal-card:nth-child(2n),
+.identity-signal-card:nth-child(4n) {
+  min-height: 128px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 7px 22px rgba(31, 31, 25, 0.04);
+  padding: 20px 22px;
+}
+
+.identity-signal-card:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
 .signal-value,
 .identity-signal-status {
   display: block;
@@ -1021,6 +1038,11 @@ body[data-app-stage="result"] .analysis-progress {
   color: var(--red);
 }
 
+.identity-reasons-panel.is-pending {
+  grid-column: 1 / -1;
+  background: var(--surface-soft);
+}
+
 .advice-item::before,
 .identity-advice-item::before {
   content: "→";
@@ -1129,13 +1151,49 @@ body[data-app-stage="result"] .analysis-progress {
 .identity-signal-card-header {
   display: flex;
   min-width: 0;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  color: var(--muted-2);
-  font: 10.5px/1.4 var(--mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  color: var(--ink-2);
+  font: 650 12px/1.45 var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.identity-signal-card-header .identity-signal-status {
+  flex: none;
+  margin-top: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  font: 650 11px/1.2 var(--sans);
+  padding: 4px 8px;
+}
+
+.identity-signal-card[data-status="match"] .identity-signal-status {
+  border-color: #c8ddcd;
+  background: #f2f8f3;
+}
+
+.identity-signal-card[data-status="partial"] .identity-signal-status {
+  border-color: #e7d5b6;
+  background: #fff9ed;
+}
+
+.identity-signal-card[data-status="mismatch"] .identity-signal-status {
+  border-color: #e8ccc7;
+  background: #fff5f3;
+}
+
+.identity-signal-card[data-status="unknown"] .identity-signal-status {
+  border-color: var(--line-2);
+  background: var(--pending-soft);
+}
+
+.identity-signal-card > .identity-signal-evidence {
+  margin-top: 14px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.65;
 }
 
 .identity-details-wrap {
@@ -3675,24 +3733,17 @@ body[data-app-stage="result"] .analysis-progress {
     margin-left: auto;
   }
 
-  .identity-card-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .signal-grid,
   .identity-signal-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .signal-card,
-  .identity-signal-card,
-  .signal-card:nth-child(4n),
-  .identity-signal-card:nth-child(4n) {
+  .signal-card:nth-child(4n) {
     border-right: 1px solid var(--line);
   }
 
-  .signal-card:nth-child(2n),
-  .identity-signal-card:nth-child(2n) {
+  .signal-card:nth-child(2n) {
     border-right: 0;
   }
 }
@@ -3860,13 +3911,17 @@ body[data-app-stage="result"] .analysis-progress {
   }
 
   .signal-card,
-  .identity-signal-card,
   .signal-card:nth-child(2n),
-  .identity-signal-card:nth-child(2n),
-  .signal-card:nth-child(4n),
-  .identity-signal-card:nth-child(4n) {
+  .signal-card:nth-child(4n) {
     min-height: 0;
     border-right: 0;
+  }
+
+  .identity-signal-card,
+  .identity-signal-card:nth-child(2n),
+  .identity-signal-card:nth-child(4n) {
+    min-height: 0;
+    padding: 18px;
   }
 
   .reason-columns,

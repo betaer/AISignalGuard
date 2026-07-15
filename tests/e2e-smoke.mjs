@@ -151,6 +151,7 @@ const REPORT_WEBRTC_INIT = `
  * opts.ipwhoTargetOnly: ipwho.is 自查请求失败，只响应显式地址回填请求。
  * opts.*TargetResponse: 为显式地址请求伪造响应，用于验证目标 IP 完整性。
  * opts.hangOpenaiStatus: status.openai.com 挂 9 秒后 abort（fallback 竞态用例）。
+ * opts.blockedServiceHosts: 让指定服务探针失败，用于验证待确认身份信号。
  */
 async function routeFixtures(target, baseOrigin, opts = {}) {
   const flags = opts.flags || {};
@@ -170,6 +171,9 @@ async function routeFixtures(target, baseOrigin, opts = {}) {
       return route.continue();
     }
     const host = url.hostname;
+    if ((opts.blockedServiceHosts || []).includes(host)) {
+      return route.abort().catch(() => {});
+    }
     const json = (body, status = 200) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) }).catch(() => {});
     const text = (body, contentType = "text/plain") =>
@@ -346,6 +350,14 @@ const scenarios = [
       await page.waitForSelector("#identity-entry");
 
       const cardCount = await page.locator('input[name="identity-profile"]').count();
+      const cardLayout = await page.locator(".identity-card").evaluateAll((cards) => {
+        const rects = cards.map((card) => card.getBoundingClientRect());
+        const positions = (values) => new Set(values.map((value) => Math.round(value))).size;
+        return {
+          columns: positions(rects.map((rect) => rect.left)),
+          rows: positions(rects.map((rect) => rect.top)),
+        };
+      });
       const startDisabled = await page.locator("#identity-start").isDisabled();
       const workspaceHidden = await page.locator("#analysis-workspace").evaluate((node) => node.hidden);
       await sleep(250);
@@ -359,22 +371,133 @@ const scenarios = [
           requestUrl.includes("generate_204")
         );
       });
-      ok("renders all five target identity cards", cardCount === 5, `cards=${cardCount}`);
+      ok("renders exactly four target identity cards", cardCount === 4, `cards=${cardCount}`);
+      ok(
+        "desktop identity cards form a balanced 2 by 2 grid",
+        cardLayout.columns === 2 && cardLayout.rows === 2,
+        JSON.stringify(cardLayout),
+      );
       ok("start button waits for a selection", startDisabled, String(startDisabled));
       ok("detailed workspace is hidden before consent", workspaceHidden, String(workspaceHidden));
       ok("no detection request runs before selection", detectionBeforeStart.length === 0, detectionBeforeStart.join(", "));
 
+      const keyboardFocusRing = await page.locator('input[value="us_consumer"]').evaluate((radio) => {
+        radio.focus();
+        const style = getComputedStyle(radio);
+        return {
+          focusVisible: radio.matches(":focus-visible"),
+          outlineWidth: style.outlineWidth,
+          outlineStyle: style.outlineStyle,
+          outlineColor: style.outlineColor,
+          outlineOffset: style.outlineOffset,
+        };
+      });
+      ok(
+        "keyboard focus remains visible on the radio control",
+        keyboardFocusRing.focusVisible &&
+          keyboardFocusRing.outlineWidth === "2px" &&
+          keyboardFocusRing.outlineStyle === "solid" &&
+          keyboardFocusRing.outlineColor === "rgb(26, 26, 24)" &&
+          keyboardFocusRing.outlineOffset === "3px",
+        JSON.stringify(keyboardFocusRing),
+      );
+
       await page.locator('input[value="tiktok_creator"]').check();
+      await sleep(320);
+      const selectedCardStyle = await page.locator('label[for="identity-tiktok-creator"]').evaluate((card) => {
+        const style = getComputedStyle(card);
+        return {
+          borderWidth: style.borderTopWidth,
+          borderColor: style.borderTopColor,
+          outlineWidth: style.outlineWidth,
+          outlineStyle: style.outlineStyle,
+        };
+      });
+      ok(
+        "selected identity card uses one dark border without an outer card outline",
+        selectedCardStyle.borderWidth === "2px" &&
+          selectedCardStyle.borderColor === "rgb(47, 109, 66)" &&
+          (selectedCardStyle.outlineWidth === "0px" || selectedCardStyle.outlineStyle === "none"),
+        JSON.stringify(selectedCardStyle),
+      );
       ok("selection enables start", !(await page.locator("#identity-start").isDisabled()), "TikTok creator selected");
       await page.locator("#identity-start").click();
       await waitForScore(page);
       await page.waitForSelector("#identity-result-root .identity-summary-card");
       const resultText = await page.locator("#identity-result-root").innerText();
+      const signalLayout = await page.locator(".identity-signal-grid").evaluate((grid) => {
+        const style = getComputedStyle(grid);
+        return {
+          columns: style.gridTemplateColumns.split(" ").filter(Boolean).length,
+          borderWidth: style.borderTopWidth,
+          cardCount: grid.querySelectorAll(".identity-signal-card").length,
+          lastCardColumnEnd: getComputedStyle(grid.querySelector(".identity-signal-card:last-child")).gridColumnEnd,
+        };
+      });
       ok("result keeps the selected target", resultText.includes("TikTok 创作者"), resultText.slice(0, 180));
       ok("result exposes the identity score", /Identity Match Score/i.test(resultText), resultText.slice(0, 180));
       ok("result explains positive evidence", resultText.includes("为什么像"), resultText.slice(0, 240));
       ok("result explains differences", resultText.includes("为什么不像"), resultText.slice(0, 240));
       ok("result exposes evidence coverage", resultText.includes("证据覆盖率"), resultText.slice(0, 240));
+      ok(
+        "identity signals use a two-column card layout instead of a four-column table",
+        signalLayout.columns === 2 &&
+          signalLayout.borderWidth === "0px" &&
+          signalLayout.cardCount > 0 &&
+          (signalLayout.cardCount % 2 === 0 || signalLayout.lastCardColumnEnd === "-1"),
+        JSON.stringify(signalLayout),
+      );
+      ok(
+        "empty pending evidence panel is not rendered",
+        (await page.locator(".identity-reasons-panel.is-pending").count()) === 0,
+        "pending panel should only exist when pending evidence exists",
+      );
+      await page.close();
+    },
+  },
+  {
+    name: "身份解释：仅在确有待确认信号时显示尚未确认区域",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({ locale: "en-US", timezoneId: "America/Los_Angeles" });
+      await routeFixtures(page, base.origin, {
+        autoStart: false,
+        blockedServiceHosts: [
+          "status.openai.com",
+          "openai.com",
+          "claude.ai",
+          "www.gstatic.com",
+          "gemini.google.com",
+          "www.cursor.com",
+          "www.perplexity.ai",
+          "github.com",
+          "registry.npmjs.org",
+          "pypi.org",
+        ],
+      });
+      await page.goto(base.href);
+      await page.locator('input[value="ai_worker"]').check();
+      await page.locator("#identity-start").click();
+      await waitForScore(page);
+      const pendingPanel = page.locator(".identity-reasons-panel.is-pending");
+      await pendingPanel.waitFor();
+      const pendingState = await pendingPanel.evaluate((panel) => {
+        const style = getComputedStyle(panel);
+        return {
+          text: panel.textContent.trim(),
+          columnStart: style.gridColumnStart,
+          columnEnd: style.gridColumnEnd,
+        };
+      });
+      ok(
+        "pending evidence panel appears when service evidence is genuinely unavailable",
+        pendingState.text.includes("尚未确认") && /AI 服务|开发者生态/.test(pendingState.text),
+        pendingState.text,
+      );
+      ok(
+        "pending evidence panel spans the full comparison width",
+        pendingState.columnStart === "1" && pendingState.columnEnd === "-1",
+        JSON.stringify(pendingState),
+      );
       await page.close();
     },
   },
@@ -390,7 +513,11 @@ const scenarios = [
       });
       await page.goto(base.href);
       const initialOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      const mobileIdentityColumns = await page.locator(".identity-card-grid").evaluate((grid) =>
+        getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length,
+      );
       ok("identity selector fits a 360px viewport", initialOverflow <= 1, `overflow=${initialOverflow}px`);
+      ok("mobile identity selector collapses to one column", mobileIdentityColumns === 1, `columns=${mobileIdentityColumns}`);
       await page.locator("#identity-generic").click();
       await waitForScore(page);
       await page.waitForSelector("#identity-result-root .identity-summary-card");

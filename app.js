@@ -327,18 +327,6 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       label: "PyPI",
       host: "pypi.org",
       probeUrl: "https://pypi.org/static/images/logo-small.2a411bc6.svg"
-    },
-    microsoft365: {
-      serviceId: "microsoft365",
-      label: "Microsoft 365",
-      host: "microsoft.com",
-      probeUrl: "https://www.microsoft.com/favicon.ico"
-    },
-    google_workspace: {
-      serviceId: "google_workspace",
-      label: "Google Workspace",
-      host: "workspace.google.com",
-      probeUrl: "https://workspace.google.com/favicon.ico"
     }
   };
 
@@ -934,11 +922,23 @@ import { analyzeIdentity } from "./identityAnalysis.js";
   function identityNetworkFacts() {
     var types = uniqueValues(
       state.exitIps
-        .map(function (item) {
-          return meaningfulIpField(item.type) ? String(item.type) : "";
-        })
-        .filter(Boolean)
+        .reduce(function (values, item) {
+          if (!meaningfulIpField(item.type)) {
+            return values;
+          }
+          return values.concat(
+            String(item.type)
+              .split(/\s*(?:\/|·)\s*/)
+              .map(function (value) {
+                return value.trim();
+              })
+              .filter(function (value) {
+                return value && !/^ipv[46]$/i.test(value);
+              })
+          );
+        }, [])
     );
+    var organizationKeys = {};
     var organizations = uniqueValues(
       state.exitIps
         .reduce(function (values, item) {
@@ -946,7 +946,18 @@ import { analyzeIdentity } from "./identityAnalysis.js";
         }, [])
         .filter(meaningfulIpField)
         .map(String)
-    );
+    ).filter(function (value) {
+      var key = value
+        .toLowerCase()
+        .replace(/^as\d+\s+/, "")
+        .replace(/\b(?:incorporated|inc|llc|ltd|limited|corporation|corp)\b/g, "")
+        .replace(/[^a-z0-9\u3400-\u9fff]+/g, "");
+      if (!key || organizationKeys[key]) {
+        return false;
+      }
+      organizationKeys[key] = true;
+      return true;
+    });
     var typeText = types.join(" ");
     var combined = types.concat(organizations).join(" · ");
     var residential = /residential|consumer|fixed(?:\s|-)?line|broadband/i.test(typeText);
@@ -966,13 +977,19 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     };
   }
 
+  function compactIdentityEvidence(values, limit) {
+    var visible = values.slice(0, limit);
+    var remaining = Math.max(0, values.length - visible.length);
+    return visible.join(" / ") + (remaining ? "（另有 " + remaining + " 条来源）" : "");
+  }
+
   function identityNetworkEvidence(facts) {
     var parts = [];
     if (facts.types.length) {
-      parts.push("来源类型：" + facts.types.join(" / "));
+      parts.push("来源类型：" + compactIdentityEvidence(facts.types, 3));
     }
     if (facts.organizations.length) {
-      parts.push("网络组织：" + facts.organizations.join(" / "));
+      parts.push("网络组织：" + compactIdentityEvidence(facts.organizations, 3));
     }
     return parts.join("；") || "网络类型未确认";
   }
@@ -1014,24 +1031,6 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       evidence + "；未发现明确机房标签，但服务商未确认具体使用类型",
       "ISP / ASN 类型证据"
     );
-  }
-
-  function identityEnterpriseNetworkSignal() {
-    if (!state.ipDiscoveryDone || !state.exitIps.length) {
-      return unknownIdentitySignal("尚未取得企业网络特征所需的 ISP / ASN 证据", "出口 IP 情报");
-    }
-    var facts = identityNetworkFacts();
-    var evidence = identityNetworkEvidence(facts);
-    if (facts.enterprise) {
-      return identitySignal("match", 0.9, evidence + "；来源包含企业或托管网络标签", "ISP / ASN 类型证据");
-    }
-    if (facts.vpn) {
-      return identitySignal("partial", 0.7, evidence + "；观察到 VPN / 代理标签，但浏览器无法确认是否为组织授权网络", "ISP / ASN 类型证据");
-    }
-    if (facts.datacenter) {
-      return identitySignal("partial", 0.65, evidence + "；观察到云或机房网络标签，尚不能确认企业归属", "ISP / ASN 类型证据");
-    }
-    return identitySignal("partial", 0.45, evidence + "；现有来源没有确认企业网络属性", "ISP / ASN 类型证据");
   }
 
   function identityReputationSignal() {
@@ -1284,26 +1283,6 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     return unknownIdentitySignal(evidence + "；浏览器限制下无法据此判断服务不可用", "目标服务可达性探测");
   }
 
-  function identitySecuritySignal() {
-    var dns = identityDnsSignal(activeIdentityProfile());
-    var webrtc = identityWebrtcSignal();
-    var facts = identityNetworkFacts();
-    var evidence = [dns.evidence, webrtc.evidence];
-    if (facts.vpn) {
-      evidence.push("网络来源包含 VPN / 代理标签，尚不能确认是否为组织授权环境");
-    }
-    if (dns.status === "mismatch" || webrtc.status === "mismatch") {
-      return identitySignal("mismatch", 0.9, evidence.join("；"), "DNS、WebRTC 与网络类型证据");
-    }
-    if (dns.status === "unknown" || webrtc.status === "unknown") {
-      return unknownIdentitySignal(evidence.join("；"), "DNS、WebRTC 与网络类型证据");
-    }
-    if (dns.status === "partial" || webrtc.status === "partial" || facts.vpn) {
-      return identitySignal("partial", 0.72, evidence.join("；"), "DNS、WebRTC 与网络类型证据");
-    }
-    return identitySignal("match", 0.82, evidence.join("；") + "；未观察到当前可检测的外露差异", "DNS、WebRTC 与网络类型证据");
-  }
-
   function buildIdentitySignals(profile) {
     var base = {
       location: identityLocationSignal(profile),
@@ -1313,9 +1292,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       language: identityLanguageSignal(profile),
       browser: identityBrowserSignal(),
       dns: identityDnsSignal(profile),
-      webrtc: identityWebrtcSignal(),
-      enterprise_network: identityEnterpriseNetworkSignal(),
-      security: identitySecuritySignal()
+      webrtc: identityWebrtcSignal()
     };
     (profile.serviceGroups || []).forEach(function (group) {
       base[group.checkId] = identityServicesSignal(group.serviceIds || []);
@@ -5289,7 +5266,8 @@ import { analyzeIdentity } from "./identityAnalysis.js";
   }
 
   function identityReasonPanel(title, tone, items, emptyText) {
-    var toneClass = tone === "like" ? " is-match" : tone === "unlike" ? " is-mismatch" : "";
+    var toneClass =
+      tone === "like" ? " is-match" : tone === "unlike" ? " is-mismatch" : tone === "pending" ? " is-pending" : "";
     return (
       '<section class="identity-reasons-panel' +
       toneClass +
@@ -5342,6 +5320,8 @@ import { analyzeIdentity } from "./identityAnalysis.js";
         return (
           '<article class="identity-signal-card" data-status="' +
           escapeHtml(detail.status) +
+          '" data-signal-id="' +
+          escapeHtml(detail.id) +
           '"><div class="identity-signal-card-header"><strong>' +
           escapeHtml(detail.label) +
           '</strong><span class="identity-signal-status">' +
@@ -5376,6 +5356,10 @@ import { analyzeIdentity } from "./identityAnalysis.js";
         return '<li class="identity-advice-item">' + escapeHtml(item.text) + "</li>";
       })
       .join("");
+    var pendingItems = analysis.pending || [];
+    var pendingPanel = pendingItems.length
+      ? identityReasonPanel("尚未确认", "pending", pendingItems, "")
+      : "";
     root.innerHTML =
       '<div class="identity-result"><section class="identity-summary-card identity-score-' +
       scoreTone +
@@ -5406,7 +5390,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       '</div></section><section class="identity-signal-section" aria-labelledby="identity-reasons-title"><div class="section-head"><div><p class="identity-summary-kicker">Evidence Comparison</p><h2 id="identity-reasons-title">为什么像，为什么不像</h2></div></div><div class="identity-reasons-grid">' +
       identityReasonPanel("为什么像", "like", analysis.like || [], "当前尚没有达到确认阈值的正向证据") +
       identityReasonPanel("为什么不像", "unlike", analysis.differences || analysis.unlike || [], "当前没有观察到明确的差异信号") +
-      identityReasonPanel("尚未确认", "pending", analysis.pending || [], "所有画像信号均已取得可分析证据") +
+      pendingPanel +
       '</div></section><section class="identity-details" aria-labelledby="identity-details-title"><div class="section-head"><div><p class="identity-summary-kicker">Weighted Match</p><h2 id="identity-details-title">目标身份匹配详情</h2></div></div><div class="identity-details-wrap"><table class="identity-details-table"><thead><tr><th>信号</th><th>状态</th><th>权重</th><th>得分贡献</th><th>检测证据</th></tr></thead><tbody>' +
       detailRows +
       '</tbody></table></div></section><section class="identity-advice" aria-labelledby="identity-advice-title"><div class="section-head"><div><p class="identity-summary-kicker">Environment Alignment</p><h2 id="identity-advice-title">如何更接近目标身份</h2></div></div>' +
