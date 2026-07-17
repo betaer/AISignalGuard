@@ -159,8 +159,8 @@ async function routeFixtures(target, baseOrigin, opts = {}) {
   if (opts.autoStart !== false && typeof target.addInitScript === "function") {
     await target.addInitScript(() => {
       document.addEventListener("DOMContentLoaded", () => {
-        // 旧回归场景默认选择通用画像；延迟到应用自己的 DOMContentLoaded
-        // 监听器完成后再触发，避免把“首次不自动检测”的产品行为改回去。
+        // 多数旧回归场景立即选择通用画像，跳过产品的 6 秒首次进入倒计时。
+        // 延迟到应用自己的 DOMContentLoaded 监听器完成后再触发。
         window.setTimeout(() => document.querySelector("#identity-generic")?.click(), 0);
       });
     });
@@ -339,7 +339,7 @@ async function scoreNodeSnapshot(page) {
 // ---------- 场景定义 ----------
 const scenarios = [
   {
-    name: "数字身份入口：首次不检测，选择画像后才开始并生成解释结果",
+    name: "首页倒计时：无选择时显示 6 至 1 秒并自动进入通用分析",
     async run({ browser, base, ok }) {
       const page = await browser.newPage({
         locale: "en-US",
@@ -348,8 +348,147 @@ const scenarios = [
       });
       const requests = [];
       page.on("request", (request) => requests.push(request.url()));
+      await page.clock.install({ time: new Date("2026-07-18T00:00:00Z") });
       await routeFixtures(page, base.origin, { autoStart: false });
       await page.goto(base.href);
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+
+      const button = page.locator("#identity-start");
+      const autoStartStatus = (await page.locator("#identity-auto-start-status").innerText()).trim();
+      const observedLabels = [(await button.innerText()).trim()];
+      for (let remaining = 5; remaining >= 1; remaining -= 1) {
+        await page.clock.runFor(1020);
+        observedLabels.push((await button.innerText()).trim());
+      }
+
+      ok(
+        "primary action exposes every countdown label from 6s through 1s",
+        observedLabels.join("|") ===
+          [6, 5, 4, 3, 2, 1].map((seconds) => `开始分析所选身份 (${seconds}s)`).join("|"),
+        observedLabels.join(" | "),
+      );
+      ok("countdown action remains disabled without a selected profile", await button.isDisabled(), "disabled");
+      ok(
+        "screen readers receive one concise automatic-entry explanation",
+        autoStartStatus === "6 秒内未选择将自动使用通用数字身份分析；选择任意画像可取消。",
+        autoStartStatus,
+      );
+
+      await page.clock.runFor(1100);
+      await page.waitForSelector("#analysis-progress:not([hidden])", { timeout: 2200 });
+      ok(
+        "countdown expiry enters the running analysis stage",
+        (await page.locator("body").getAttribute("data-app-stage")) === "running",
+        String(await page.locator("body").getAttribute("data-app-stage")),
+      );
+      await page.clock.resume();
+      await waitForScore(page);
+      await page.waitForSelector("#identity-result-root .identity-summary-card");
+      const resultText = await page.locator("#identity-result-root").innerText();
+      const ipv4Starts = requests.filter((url) => url.startsWith("https://4.ident.me/json")).length;
+      ok("countdown uses the generic identity profile", resultText.includes("通用数字身份分析"), resultText.slice(0, 180));
+      ok("automatic entry starts the core IP run exactly once", ipv4Starts === 1, `4.ident.me requests=${ipv4Starts}`);
+      await page.close();
+    },
+  },
+  {
+    name: "首页倒计时：选择画像立即取消自动通用分析",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({ locale: "en-US", timezoneId: "America/Los_Angeles" });
+      const requests = [];
+      page.on("request", (request) => requests.push(request.url()));
+      await page.clock.install({ time: new Date("2026-07-18T00:00:00Z") });
+      await routeFixtures(page, base.origin, { autoStart: false });
+      await page.goto(base.href);
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+      await page.clock.runFor(1020);
+
+      await page.locator('input[value="ai_worker"]').check();
+      const selectedLabel = (await page.locator("#identity-start").innerText()).trim();
+      const cancellationStatus = (await page.locator("#identity-auto-start-status").innerText()).trim();
+      await page.clock.runFor(6500);
+      const detectionRequests = requests.filter((url) => url.startsWith("https://4.ident.me/json"));
+      ok(
+        "selection replaces the countdown with the selected profile action",
+        selectedLabel === "开始分析 · 🤖 AI 用户",
+        selectedLabel,
+      );
+      ok(
+        "selection announces that automatic entry is cancelled",
+        cancellationStatus === "自动进入已取消，请点击按钮开始分析所选身份。",
+        cancellationStatus,
+      );
+      ok(
+        "selection keeps the page in the identity choice stage beyond the original deadline",
+        (await page.locator("body").getAttribute("data-app-stage")) === "select",
+        String(await page.locator("body").getAttribute("data-app-stage")),
+      );
+      ok(
+        "selected profile action remains stable after the former countdown deadline",
+        (await page.locator("#identity-start").innerText()).trim() === "开始分析 · 🤖 AI 用户",
+        (await page.locator("#identity-start").innerText()).trim(),
+      );
+      ok("selection cancellation prevents the core IP detection run", detectionRequests.length === 0, detectionRequests.join(", "));
+      await page.close();
+    },
+  },
+  {
+    name: "首页倒计时：手动跳过只启动一次且重新选择不重启倒计时",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({ locale: "en-US", timezoneId: "America/Los_Angeles" });
+      const requests = [];
+      page.on("request", (request) => requests.push(request.url()));
+      await page.clock.install({ time: new Date("2026-07-18T00:00:00Z") });
+      await routeFixtures(page, base.origin, { autoStart: false });
+      await page.goto(base.href);
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+      await page.clock.runFor(5800);
+      await page.locator("#identity-generic").evaluate((button) => {
+        button.click();
+        button.click();
+      });
+      ok(
+        "manual skip near expiry enters analysis immediately",
+        (await page.locator("body").getAttribute("data-app-stage")) === "running",
+        String(await page.locator("body").getAttribute("data-app-stage")),
+      );
+      await page.clock.resume();
+      await waitForScore(page);
+      await page.waitForSelector("#identity-result-root .identity-summary-card");
+      await page.locator('[data-identity-action="reselect"]').click();
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+      await page.clock.runFor(6500);
+
+      const actionLabel = (await page.locator("#identity-start").innerText()).trim();
+      const ipv4Starts = requests.filter((url) => url.startsWith("https://4.ident.me/json")).length;
+      ok(
+        "duplicate manual activations near expiry start the generic analysis exactly once",
+        ipv4Starts === 1,
+        `4.ident.me requests=${ipv4Starts}`,
+      );
+      ok(
+        "reselection remains on the identity choice stage without a second automatic entry",
+        (await page.locator("body").getAttribute("data-app-stage")) === "select",
+        String(await page.locator("body").getAttribute("data-app-stage")),
+      );
+      ok("reselection restores the normal action without another countdown", actionLabel === "开始分析所选身份", actionLabel);
+      await page.close();
+    },
+  },
+  {
+    name: "数字身份入口：首次呈现选择入口，选择画像后开始并生成解释结果",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({
+        locale: "en-US",
+        timezoneId: "America/Los_Angeles",
+        viewport: { width: 1280, height: 900 },
+      });
+      const requests = [];
+      page.on("request", (request) => requests.push(request.url()));
+      await page.clock.install({ time: new Date("2026-07-18T00:00:00Z") });
+      await routeFixtures(page, base.origin, { autoStart: false });
+      await page.goto(base.href);
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
       await page.waitForSelector("#identity-entry");
 
       const visibleCards = page.locator(".identity-card:visible");
@@ -427,9 +566,13 @@ const scenarios = [
         mobileLayout.columns === 1 && mobileLayout.rows === 3,
         JSON.stringify(mobileLayout),
       );
-      ok("start button waits for a selection", startDisabled, String(startDisabled));
-      ok("detailed workspace is hidden before consent", workspaceHidden, String(workspaceHidden));
-      ok("no detection request runs before selection", detectionBeforeStart.length === 0, detectionBeforeStart.join(", "));
+      ok("start button remains disabled during the initial countdown", startDisabled, String(startDisabled));
+      ok("detailed workspace is hidden before analysis starts", workspaceHidden, String(workspaceHidden));
+      ok(
+        "no detection request runs before selection or countdown expiry",
+        detectionBeforeStart.length === 0,
+        detectionBeforeStart.join(", "),
+      );
 
       const keyboardFocusRing = await page.locator('input[value="ai_worker"]').evaluate((radio) => {
         radio.focus();
@@ -471,6 +614,7 @@ const scenarios = [
         JSON.stringify(selectedCardStyle),
       );
       ok("selection enables start", !(await page.locator("#identity-start").isDisabled()), "creator profile selected");
+      await page.clock.resume();
       await page.locator("#identity-start").click();
       await waitForScore(page);
       await page.waitForSelector("#identity-result-root .identity-summary-card");

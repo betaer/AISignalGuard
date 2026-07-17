@@ -30,7 +30,7 @@
         window.dataLayer.push(arguments);
       };
     </script>
-    <script vite-ignore src="app.min.js?v=20260717-2" defer></script>
+    <script vite-ignore src="app.min.js?v=20260718-1" defer></script>
   </head>
   <body data-app-stage="select">
     <a class="skip-link" href="#main">跳到主要内容</a>
@@ -235,6 +235,13 @@
             <button class="identity-secondary-action" id="identity-generic" type="button">
               跳过选择，使用通用数字身份分析
             </button>
+            <p
+              class="visually-hidden"
+              id="identity-auto-start-status"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            ></p>
           </div>
         </form>
       </section>

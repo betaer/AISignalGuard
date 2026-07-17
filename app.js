@@ -5259,6 +5259,74 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     return redactDiagnosticReportText(lines.join("\n"));
   }
 
+  var IDENTITY_AUTO_START_SECONDS = 6;
+  var identityAutoCountdown = {
+    timer: 0,
+    deadline: 0,
+    remaining: 0,
+    active: false,
+    consumed: false,
+    announcement: ""
+  };
+
+  function clearIdentityAutoCountdownTimer() {
+    if (!identityAutoCountdown.timer) {
+      return;
+    }
+    window.clearTimeout(identityAutoCountdown.timer);
+    identityAutoCountdown.timer = 0;
+  }
+
+  function cancelIdentityAutoCountdown(announcement) {
+    clearIdentityAutoCountdownTimer();
+    identityAutoCountdown.deadline = 0;
+    identityAutoCountdown.remaining = 0;
+    identityAutoCountdown.active = false;
+    identityAutoCountdown.consumed = true;
+    identityAutoCountdown.announcement = typeof announcement === "string" ? announcement : "";
+  }
+
+  function tickIdentityAutoCountdown() {
+    if (!identityAutoCountdown.active) {
+      return;
+    }
+    if (state.appStage !== "select" || state.selectedIdentityId) {
+      cancelIdentityAutoCountdown();
+      return;
+    }
+    var millisecondsLeft = identityAutoCountdown.deadline - Date.now();
+    var remaining = Math.max(0, Math.ceil(millisecondsLeft / 1000));
+    if (remaining <= 0) {
+      cancelIdentityAutoCountdown();
+      startIdentityAnalysis("generic");
+      return;
+    }
+    if (remaining !== identityAutoCountdown.remaining) {
+      identityAutoCountdown.remaining = remaining;
+      renderIdentitySelectionState();
+    }
+    var nextBoundaryDelay = Math.max(50, millisecondsLeft - (remaining - 1) * 1000 + 20);
+    clearIdentityAutoCountdownTimer();
+    identityAutoCountdown.timer = window.setTimeout(tickIdentityAutoCountdown, nextBoundaryDelay);
+  }
+
+  function startIdentityAutoCountdown() {
+    if (
+      identityAutoCountdown.active ||
+      identityAutoCountdown.consumed ||
+      state.appStage !== "select" ||
+      state.selectedIdentityId
+    ) {
+      return;
+    }
+    identityAutoCountdown.active = true;
+    identityAutoCountdown.deadline = Date.now() + IDENTITY_AUTO_START_SECONDS * 1000;
+    identityAutoCountdown.remaining = IDENTITY_AUTO_START_SECONDS;
+    identityAutoCountdown.announcement = "";
+    renderIdentitySelectionState();
+    tickIdentityAutoCountdown();
+  }
+
   function setAppStage(stage) {
     var normalized = ["select", "running", "result"].indexOf(stage) >= 0 ? stage : "select";
     state.appStage = normalized;
@@ -5292,13 +5360,23 @@ import { analyzeIdentity } from "./identityAnalysis.js";
 
   function renderIdentitySelectionState() {
     var startButton = $("#identity-start");
+    var autoStartStatus = $("#identity-auto-start-status");
     document.querySelectorAll('input[name="identity-profile"]').forEach(function (input) {
       input.checked = input.value === state.selectedIdentityId;
     });
     if (startButton) {
       startButton.disabled = !state.selectedIdentityId;
       var profile = state.selectedIdentityId ? getIdentityProfile(state.selectedIdentityId) : null;
-      startButton.textContent = profile ? "开始分析 · " + profile.icon + " " + profile.name : "开始分析所选身份";
+      startButton.textContent = profile
+        ? "开始分析 · " + profile.icon + " " + profile.name
+        : identityAutoCountdown.active && identityAutoCountdown.remaining > 0
+          ? "开始分析所选身份 (" + identityAutoCountdown.remaining + "s)"
+          : "开始分析所选身份";
+    }
+    if (autoStartStatus) {
+      autoStartStatus.textContent = identityAutoCountdown.active
+        ? "6 秒内未选择将自动使用通用数字身份分析；选择任意画像可取消。"
+        : identityAutoCountdown.announcement;
     }
   }
 
@@ -5514,6 +5592,10 @@ import { analyzeIdentity } from "./identityAnalysis.js";
   }
 
   function startIdentityAnalysis(profileId) {
+    cancelIdentityAutoCountdown();
+    if (state.appStage !== "select") {
+      return false;
+    }
     var profile = getIdentityProfile(profileId || "generic") || getIdentityProfile("generic");
     state.selectedIdentityId = profile.id === "generic" ? "" : profile.id;
     state.identityProfileId = profile.id;
@@ -5531,9 +5613,11 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       }
     });
     scheduleIdle(loadAnalytics, 4200);
+    return true;
   }
 
   function returnToIdentitySelection() {
+    cancelIdentityAutoCountdown();
     state.runId += 1;
     abortActiveRunResources();
     Object.keys(moduleRuns).forEach(function (name) {
@@ -6602,6 +6686,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
         if (!input) {
           return;
         }
+        cancelIdentityAutoCountdown("自动进入已取消，请点击按钮开始分析所选身份。");
         state.selectedIdentityId = input.value;
         renderIdentitySelectionState();
       });
@@ -7062,6 +7147,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     bindStaticEvents();
     setAppStage("select");
     renderIdentitySelectionState();
+    startIdentityAutoCountdown();
     scheduleAfterPaint(function () {
       scheduleIdle(loadStars, 2200);
     }, 1200);
