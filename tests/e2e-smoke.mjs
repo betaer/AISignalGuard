@@ -94,6 +94,28 @@ async function captureCopiedSummary(page) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function colorContrastRatio(foreground, background) {
+  const luminance = (color) => {
+    const channels = String(color).match(/[\d.]+/g)?.slice(0, 3).map(Number);
+    if (!channels || channels.length !== 3) return Number.NaN;
+    const linear = channels.map((channel) => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  };
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+}
+
+function minimumBackgroundContrastRatio(foreground, backgroundColor, backgroundImage = "") {
+  const gradientColors = String(backgroundImage).match(/rgba?\([^)]*\)/g) || [];
+  const backgrounds = [backgroundColor, ...gradientColors];
+  return Math.min(...backgrounds.map((background) => colorContrastRatio(foreground, background)));
+}
+
 // Fake RTCPeerConnection：吐出一个不在 fixture 出口列表里的公网 srflx 候选，
 // 使 WebRTC 判定为“发现出口外公网候选”（-12），用于验证 reapplyWebrtc()。
 const FAKE_WEBRTC_INIT = `
@@ -483,6 +505,129 @@ const scenarios = [
         `4.ident.me requests=${autoCoreRequests.length}`,
       );
       await autoPage.close();
+    },
+  },
+  {
+    name: "Demo 主操作状态：悬停文字保持白色，通用入口默认显示下划线",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({
+        locale: "en-US",
+        timezoneId: "America/Los_Angeles",
+        viewport: { width: 1280, height: 900 },
+      });
+      await page.clock.install({ time: new Date("2026-07-18T00:00:00Z") });
+      await routeFixtures(page, base.origin, { autoStart: false });
+      await page.goto(new URL("demo/index-new.html", base).href);
+
+      const secondaryStyle = await page.locator("#identity-generic").evaluate((button) => {
+        const style = getComputedStyle(button);
+        return {
+          textDecorationColor: style.textDecorationColor,
+          textDecorationLine: style.textDecorationLine,
+          textUnderlineOffset: style.textUnderlineOffset,
+        };
+      });
+      ok(
+        "generic analysis entry exposes its underline before hover",
+        secondaryStyle.textDecorationLine.includes("underline") &&
+          !["rgba(0, 0, 0, 0)", "transparent"].includes(secondaryStyle.textDecorationColor),
+        JSON.stringify(secondaryStyle),
+      );
+
+      const startButton = page.locator("#identity-start");
+      await startButton.hover();
+      await sleep(240);
+      const countdownHover = await startButton.evaluate((button) => {
+        const style = getComputedStyle(button);
+        return {
+          countdownState: button.getAttribute("data-auto-countdown"),
+          color: style.color,
+          backgroundColor: style.backgroundColor,
+          backgroundImage: style.backgroundImage,
+        };
+      });
+      countdownHover.contrast = minimumBackgroundContrastRatio(
+        countdownHover.color,
+        countdownHover.backgroundColor,
+        countdownHover.backgroundImage,
+      );
+      ok(
+        "countdown primary action keeps readable white text on hover",
+        countdownHover.countdownState === "true" &&
+          countdownHover.color === "rgb(255, 255, 255)" &&
+          countdownHover.contrast >= 4.5,
+        JSON.stringify(countdownHover),
+      );
+
+      await page.keyboard.press("Shift");
+      await sleep(500);
+      const pausedHover = await startButton.evaluate((button) => {
+        const style = getComputedStyle(button);
+        return {
+          countdownState: button.getAttribute("data-auto-countdown"),
+          hovered: button.matches(":hover"),
+          color: style.color,
+          backgroundColor: style.backgroundColor,
+          backgroundImage: style.backgroundImage,
+        };
+      });
+      pausedHover.contrast = minimumBackgroundContrastRatio(
+        pausedHover.color,
+        pausedHover.backgroundColor,
+        pausedHover.backgroundImage,
+      );
+      ok(
+        "paused generic primary action keeps readable white text on hover",
+        pausedHover.countdownState === "paused" &&
+          pausedHover.hovered === true &&
+          pausedHover.color === "rgb(255, 255, 255)" &&
+          pausedHover.contrast >= 4.5,
+        JSON.stringify(pausedHover),
+      );
+
+      await page.locator('input[value="ai_worker"]').check();
+      await startButton.hover();
+      await sleep(240);
+      const selectedHover = await startButton.evaluate((button) => {
+        const style = getComputedStyle(button);
+        return {
+          countdownState: button.getAttribute("data-auto-countdown"),
+          color: style.color,
+          backgroundColor: style.backgroundColor,
+          backgroundImage: style.backgroundImage,
+        };
+      });
+      selectedHover.contrast = minimumBackgroundContrastRatio(
+        selectedHover.color,
+        selectedHover.backgroundColor,
+        selectedHover.backgroundImage,
+      );
+      ok(
+        "selected profile primary action keeps readable white text on hover",
+        selectedHover.countdownState === null &&
+          selectedHover.color === "rgb(255, 255, 255)" &&
+          selectedHover.contrast >= 4.5,
+        JSON.stringify(selectedHover),
+      );
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      const mobileSecondaryStyle = await page.locator("#identity-generic").evaluate((button) => {
+        const style = getComputedStyle(button);
+        return {
+          height: button.getBoundingClientRect().height,
+          borderTopWidth: style.borderTopWidth,
+          textDecorationLine: style.textDecorationLine,
+        };
+      });
+      ok(
+        "mobile generic entry stays an underlined text action with a full touch target",
+        mobileSecondaryStyle.borderTopWidth === "0px" &&
+          mobileSecondaryStyle.textDecorationLine.includes("underline") &&
+          mobileSecondaryStyle.height >= 44,
+        JSON.stringify(mobileSecondaryStyle),
+      );
+
+      await page.close();
     },
   },
   {
