@@ -6,7 +6,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
 
   var RING_CIRCUMFERENCE = 326.726;
   var NAV = [
-    ["identity-result-root", "身份分析"],
+    ["identity-result-root", "网络风险"],
     ["sec-ip", "出口 IP"],
     ["sec-identity", "身份信号"],
     ["sec-leak", "网络泄漏"],
@@ -15,8 +15,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     ["sec-aipath", "AI 路径"],
     ["sec-aistatus", "AI 状态"],
     ["sec-fp", "浏览器指纹"],
-    ["sec-trace", "路由追踪"],
-    ["sec-score", "网络风险"]
+    ["sec-trace", "路由追踪"]
   ];
 
   var IDENTITY_SECTION_BY_SIGNAL = {
@@ -4716,20 +4715,16 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     var unlike = (identity.differences || identity.unlike || []).slice(0, 2).map(function (item) {
       return item.text;
     });
-    var scoreText = identity.isScoreReady ? identity.score + "/100" : "证据不足，暂不评分";
+    var risk = networkRiskPresentation(scoreSegmentData(), scoreReady());
+    var networkScoreText = scoreReady() ? state.score + "/100" : "检测中";
     function build(compact) {
       var generic = identity.profile.id === "generic";
-      var lines = generic
-        ? [
-            "AI Signal Guard · 数字环境综合结论",
-            "通用分析不预设目标画像 · 证据覆盖 " + identity.coverage + "%",
-            compact ? "" : identity.summary
-          ]
-        : [
-            identity.profile.icon + " " + identity.profile.name + " · 数字身份匹配分析",
-            "Identity Match Score：" + scoreText + " · 证据覆盖 " + identity.coverage + "%",
-            compact ? "" : identity.summary
-          ];
+      var lines = [
+        "AI Signal Guard · 高级网络风险诊断",
+        "网络信号参考分：" + networkScoreText + " · " + risk.label,
+        generic ? "当前分析：通用数字身份" : "当前目标：" + identity.profile.icon + " " + identity.profile.name,
+        compact ? "" : identity.summary
+      ];
       if (like.length) {
         lines.push("为什么像：" + like.slice(0, compact ? 1 : 2).join("；"));
       }
@@ -5072,6 +5067,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       "",
       "## 综合结论",
       "",
+      "- 网络信号参考分：" + (scoreReady() ? state.score + "/100" : "检测中"),
       "- 高级网络风险：" + riskPresentation.label,
       "- 高风险项：" + riskPresentation.counts.red,
       "- 需留意项：" + riskPresentation.counts.amber,
@@ -5079,15 +5075,11 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       "- 其他待确认诊断：" + (unconfirmed.length ? unconfirmed.join(" / ") : "无")
     );
     if (identity) {
-      var identityScoreLine = identity.profile.id === "generic"
-        ? "- 匹配分：未预设目标画像，不展示百分制匹配分"
-        : "- Identity Match Score：" + (identity.isScoreReady ? identity.score + "/100" : "证据不足，暂不评分");
       lines.push(
         "",
-        "## 数字身份匹配",
+        "## 数字身份分析",
         "",
         "- 目标画像：" + reportSafeText(identity.profile.icon + " " + identity.profile.target.label, "未选择", 100),
-        identityScoreLine,
         "- 证据覆盖率：" + identity.coverage + "%",
         "- 环境总结：" + reportSafeText(identity.summary, "未确认", 240),
         "- 为什么像：" + (identityLikes.length ? identityLikes.map(function (item) { return reportSafeText(item, "", 160); }).join("；") : "尚无达到确认阈值的正向证据"),
@@ -5507,27 +5499,13 @@ import { analyzeIdentity } from "./identityAnalysis.js";
   }
 
   function renderIdentityResult() {
-    var root = $("#identity-result-root");
+    var root = $("#identity-result-content");
     if (!root || !state.identityAnalysis) {
       return;
     }
     var analysis = state.identityAnalysis;
     var profile = analysis.profile;
     var isGeneric = profile.id === "generic";
-    var scoreTone = !analysis.isScoreReady
-      ? "pending"
-      : analysis.score >= 90
-        ? "high"
-        : analysis.score >= 70
-          ? "close"
-          : analysis.score >= 40
-            ? "mixed"
-            : "low";
-    var caps = (analysis.caps || [])
-      .map(function (cap) {
-        return '<p class="identity-summary-note">评分上限 ' + escapeHtml(cap.cap) + "：" + escapeHtml(cap.reason) + "</p>";
-      })
-      .join("");
     var adviceItems = (analysis.advice || [])
       .map(function (item) {
         return '<li class="identity-advice-item">' + escapeHtml(item.text) + "</li>";
@@ -5537,55 +5515,48 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     var pendingPanel = pendingItems.length
       ? identityReasonPanel("尚未确认", "pending", pendingItems, "")
       : "";
-    var profileMarkup = isGeneric
-      ? '<div class="identity-summary-profile identity-summary-profile-generic"><div><p class="identity-summary-kicker">通用数字身份分析</p><h1 class="identity-summary-name" id="identity-result-title" tabindex="-1">数字环境综合结论</h1><p class="identity-summary-target">不预设地区、职业或真实身份</p></div></div>'
-      : '<div class="identity-summary-profile"><span class="identity-summary-icon" aria-hidden="true">' +
-        escapeHtml(profile.icon) +
-        '</span><div><p class="identity-summary-kicker">目标数字身份</p><h1 class="identity-summary-name" id="identity-result-title" tabindex="-1">' +
-        escapeHtml(profile.name) +
-        '</h1><p class="identity-summary-target">目标画像：' +
-        escapeHtml(profile.target.label) +
-        "</p></div></div>";
-    var scoreMarkup = isGeneric
-      ? ""
-      : analysis.isScoreReady
-        ? '<div class="identity-match-score" data-score-state="ready"><span class="identity-match-score-label">Identity Match Score</span><strong class="identity-match-score-value" id="identity-match-score">' +
-          escapeHtml(analysis.score) +
-          '</strong><span class="identity-score-total">/100</span></div>'
-        : '<div class="identity-match-score" data-score-state="unavailable"><span class="identity-match-score-label">Identity Match Score</span><strong class="identity-match-score-value" id="identity-match-score">证据不足</strong><span class="identity-score-total">暂不评分</span></div>';
+    var profileContext = $("#network-risk-profile-context");
+    var profileTarget = $("#network-risk-profile-target");
+    if (profileContext) {
+      profileContext.textContent = isGeneric ? "通用数字身份分析" : "当前目标 · " + profile.name;
+    }
+    if (profileTarget) {
+      profileTarget.textContent = isGeneric
+        ? "不预设地区、职业或真实身份"
+        : "目标画像：" + profile.target.label;
+    }
+    var reasonTitle = isGeneric ? "哪些信号一致，哪些存在差异" : "为什么像，为什么不像";
+    var likeTitle = isGeneric ? "一致信号" : "为什么像";
+    var unlikeTitle = isGeneric ? "差异信号" : "为什么不像";
+    var adviceTitle = isGeneric ? "如何提高环境一致性" : "如何更接近目标身份";
     root.innerHTML =
-      '<div class="identity-result"><section class="identity-summary-card identity-score-' +
-      scoreTone +
-      (isGeneric ? " identity-summary-generic" : "") +
-      '" aria-labelledby="identity-result-title"><div class="identity-summary-header">' +
-      profileMarkup +
-      scoreMarkup +
-      '</div><p class="identity-summary-text">' +
-      escapeHtml(analysis.summary) +
-      '</p><div class="identity-summary-footer"><div class="identity-coverage"><span>证据覆盖率</span><strong id="identity-coverage-value">' +
-      escapeHtml(analysis.coverage) +
-      '%</strong><div class="identity-coverage-meter" role="progressbar" aria-label="证据覆盖率" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' +
-      escapeHtml(analysis.coverage) +
-      '"><span class="identity-coverage-fill" style="width:' +
-      escapeHtml(analysis.coverage) +
-      '%"></span></div></div><button class="identity-reselect" type="button" data-identity-action="reselect">重新选择目标身份</button></div>' +
-      caps +
-      '</section><section class="identity-result-section identity-reasons-section" aria-labelledby="identity-reasons-title"><div class="identity-result-heading"><p class="identity-summary-kicker">匹配依据</p><h2 id="identity-reasons-title">为什么像，为什么不像</h2></div><div class="identity-reasons-grid">' +
-      identityReasonPanel("为什么像", "like", analysis.like || [], "当前尚没有达到确认阈值的正向证据") +
-      identityReasonPanel("为什么不像", "unlike", analysis.differences || analysis.unlike || [], "当前没有观察到明确的差异信号") +
+      '<div class="identity-result"><section class="identity-result-section identity-reasons-section" aria-labelledby="identity-reasons-title"><div class="identity-result-heading identity-result-heading-with-context"><div><p class="identity-summary-kicker">' +
+      (isGeneric ? "环境依据" : "匹配依据") +
+      '</p><h2 id="identity-reasons-title">' +
+      escapeHtml(reasonTitle) +
+      '</h2></div><div class="identity-result-context"><span class="identity-result-profile">' +
+      escapeHtml(isGeneric ? "通用数字身份分析" : profile.name) +
+      '</span></div></div><div class="identity-reasons-grid">' +
+      identityReasonPanel(likeTitle, "like", analysis.like || [], "当前尚没有达到确认阈值的正向证据") +
+      identityReasonPanel(unlikeTitle, "unlike", analysis.differences || analysis.unlike || [], "当前没有观察到明确的差异信号") +
       pendingPanel +
-      '</div></section><section class="identity-advice" aria-labelledby="identity-advice-title"><div class="identity-result-heading"><p class="identity-summary-kicker">调整优先级</p><h2 id="identity-advice-title">如何更接近目标身份</h2></div>' +
+      '</div></section><section class="identity-advice" aria-labelledby="identity-advice-title"><div class="identity-result-heading"><p class="identity-summary-kicker">调整优先级</p><h2 id="identity-advice-title">' +
+      escapeHtml(adviceTitle) +
+      "</h2></div>" +
       (adviceItems
         ? '<ol class="identity-advice-list">' + adviceItems + "</ol>"
         : '<p class="identity-advice-empty">当前没有需要优先调整的已确认环境差异。</p>') +
       "</section></div>";
     var resultStatus = $("#identity-result-status");
     if (resultStatus) {
-      var announcement = isGeneric
-        ? "通用数字环境分析完成。证据覆盖率 " + analysis.coverage + "% 。"
-        : analysis.isScoreReady
-        ? "数字身份分析完成。" + profile.name + "匹配分 " + analysis.score + "，证据覆盖率 " + analysis.coverage + "% 。"
-        : "数字身份分析完成，但证据不足，未生成匹配分。证据覆盖率 " + analysis.coverage + "% 。";
+      var risk = networkRiskPresentation(scoreSegmentData(), scoreReady());
+      var announcement =
+        (isGeneric ? "通用数字环境分析完成。" : "数字身份分析完成。当前目标 " + profile.name + "。") +
+        "网络信号参考分 " +
+        state.score +
+        "。" +
+        risk.countText +
+        "。";
       if (resultStatus.textContent !== announcement) {
         resultStatus.textContent = announcement;
       }
@@ -5593,9 +5564,10 @@ import { analyzeIdentity } from "./identityAnalysis.js";
   }
 
   function renderEmbeddedIdentitySignal(detail) {
-    var contribution = detail.scoreContribution && detail.scoreContribution.toFixed
-      ? detail.scoreContribution.toFixed(1)
-      : detail.scoreContribution;
+    var signalPrefix =
+      state.identityAnalysis && state.identityAnalysis.profile && state.identityAnalysis.profile.id === "generic"
+        ? "环境一致性"
+        : "目标匹配";
     return (
       '<details class="identity-signal-card" data-status="' +
       escapeHtml(detail.status) +
@@ -5603,15 +5575,13 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       escapeHtml(detail.id) +
       '"' +
       (state.identitySignalOpen[detail.id] ? " open" : "") +
-      '><summary class="identity-signal-card-header"><span><span class="identity-signal-prefix">目标匹配</span><strong>' +
+      '><summary class="identity-signal-card-header"><span><span class="identity-signal-prefix">' +
+      escapeHtml(signalPrefix) +
+      "</span><strong>" +
       escapeHtml(detail.label) +
       '</strong></span><span class="identity-signal-card-meta"><span class="identity-signal-status">' +
       escapeHtml(identityStatusLabel(detail.status)) +
-      '</span><span class="identity-signal-chevron" aria-hidden="true">›</span></span></summary><div class="identity-signal-card-body"><dl><div><dt>权重</dt><dd>' +
-      escapeHtml(detail.weight) +
-      '%</dd></div><div><dt>得分贡献</dt><dd>' +
-      escapeHtml(contribution) +
-      '</dd></div></dl><p class="identity-signal-evidence sensitive">' +
+      '</span><span class="identity-signal-chevron" aria-hidden="true">›</span></span></summary><div class="identity-signal-card-body"><p class="identity-signal-evidence sensitive">' +
       escapeHtml(detail.evidence || detail.text || "证据尚未返回") +
       "</p></div></details>"
     );
@@ -5643,6 +5613,10 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       var sectionName = sectionHeading
         ? sectionHeading.textContent.replace(/\s+/g, " ").trim()
         : sectionId;
+      var sectionMatchLabel =
+        state.identityAnalysis.profile && state.identityAnalysis.profile.id === "generic"
+          ? "环境一致性"
+          : "目标身份匹配";
       var wrapper = document.createElement("section");
       var headingId = sectionId + "-identity-match-title";
       wrapper.className = "identity-section-match";
@@ -5653,7 +5627,9 @@ import { analyzeIdentity } from "./identityAnalysis.js";
         escapeHtml(headingId) +
         '"><span class="visually-hidden">' +
         escapeHtml(sectionName + " · ") +
-        "</span>目标身份匹配</h3><span>" +
+        "</span>" +
+        escapeHtml(sectionMatchLabel) +
+        "</h3><span>" +
         signals.length +
         ' 项信号，点击查看依据</span></div><div class="identity-section-match-grid">' +
         signals.map(renderEmbeddedIdentitySignal).join("") +
@@ -5664,10 +5640,6 @@ import { analyzeIdentity } from "./identityAnalysis.js";
 
   function resetIdentityDisclosureState() {
     state.identitySignalOpen = {};
-    var advancedDiagnostics = $("#sec-score");
-    if (advancedDiagnostics) {
-      advancedDiagnostics.open = false;
-    }
   }
 
   function startIdentityAnalysis(profileId) {
@@ -5840,12 +5812,19 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       });
     }
     document.querySelectorAll(".segmented-button").forEach(function (button) {
-      button.classList.toggle("is-active", button.dataset.region === state.region);
+      var isActive = button.dataset.region === state.region;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
     });
     var rulesPanel = $("#rules-panel");
     var privacyPanel = $("#privacy-panel");
     if (rulesPanel) rulesPanel.hidden = !state.panels.rules;
     if (privacyPanel) privacyPanel.hidden = !state.panels.privacy;
+    document.querySelectorAll("[data-panel]").forEach(function (button) {
+      var panelId = button.dataset.panel;
+      var isExpanded = Boolean(state.panels[panelId]);
+      button.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+    });
     updateNavScrollHint();
   }
 
@@ -6852,6 +6831,10 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       genericButton.addEventListener("click", function () {
         startIdentityAnalysis("generic");
       });
+    }
+    var networkRiskReselect = $("#network-risk-reselect");
+    if (networkRiskReselect) {
+      networkRiskReselect.addEventListener("click", returnToIdentitySelection);
     }
     var runAllButton = $("#run-all");
     if (runAllButton) {

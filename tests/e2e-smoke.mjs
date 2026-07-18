@@ -1608,7 +1608,7 @@ const scenarios = [
       );
       await page.clock.resume();
       await waitForScore(page);
-      await page.waitForSelector("#identity-result-root .identity-summary-card");
+      await page.waitForSelector("#network-risk-reselect");
       const resultText = await page.locator("#identity-result-root").innerText();
       const ipv4Starts = requests.filter((url) => url.startsWith("https://4.ident.me/json")).length;
       ok("countdown uses the generic identity profile", resultText.includes("通用数字身份分析"), resultText.slice(0, 180));
@@ -1676,7 +1676,7 @@ const scenarios = [
 
       await page.clock.resume();
       await waitForScore(page);
-      await page.waitForSelector("#identity-result-root .identity-summary-card");
+      await page.waitForSelector("#network-risk-reselect");
       const resultText = await page.locator("#identity-result-root").innerText();
       const ipv4Starts = requests.filter((url) => url.startsWith("https://4.ident.me/json")).length;
       ok(
@@ -1778,8 +1778,8 @@ const scenarios = [
       );
       await page.clock.resume();
       await waitForScore(page);
-      await page.waitForSelector("#identity-result-root .identity-summary-card");
-      await page.locator('[data-identity-action="reselect"]').click();
+      await page.waitForSelector("#network-risk-reselect");
+      await page.locator("#network-risk-reselect").click();
       await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
       await page.clock.runFor(6500);
 
@@ -1946,7 +1946,7 @@ const scenarios = [
       await page.clock.resume();
       await page.locator("#identity-start").click();
       await waitForScore(page);
-      await page.waitForSelector("#identity-result-root .identity-summary-card");
+      await page.waitForSelector("#network-risk-reselect");
       const resultText = await page.locator("#identity-result-root").innerText();
       const signalLayout = await page.locator("#section-root .identity-signal-card").evaluateAll((cards) => ({
         cardCount: cards.length,
@@ -1954,10 +1954,16 @@ const scenarios = [
         sectionCount: new Set(cards.map((card) => card.closest("#section-root .section")?.id)).size,
       }));
       ok("result keeps the selected target", resultText.includes("自媒体创作者"), resultText.slice(0, 180));
-      ok("result exposes the identity score", /Identity Match Score/i.test(resultText), resultText.slice(0, 180));
+      ok(
+        "result keeps identity reasoning without a second target percentage",
+        !/目标匹配度|Identity Match Score/i.test(resultText) &&
+          (await page.locator("#identity-match-score, .identity-match-score").count()) === 0 &&
+          (await page.locator("#score-status").innerText()).trim() === "网络信号参考分",
+        resultText.slice(0, 180),
+      );
       ok("result explains positive evidence", resultText.includes("为什么像"), resultText.slice(0, 240));
       ok("result explains differences", resultText.includes("为什么不像"), resultText.slice(0, 240));
-      ok("result exposes evidence coverage", resultText.includes("证据覆盖率"), resultText.slice(0, 240));
+      ok("result removes the superseded evidence-coverage summary", !resultText.includes("证据覆盖率"), resultText.slice(0, 240));
       ok(
         "identity signals are distributed into their matching diagnostic sections",
         signalLayout.cardCount > 0 && signalLayout.allEmbedded && signalLayout.sectionCount >= 4,
@@ -1980,14 +1986,14 @@ const scenarios = [
       await page.locator('input[value="cross_border_seller"]').check();
       await page.locator("#identity-start").click();
       await waitForScore(page);
-      await page.waitForSelector("#identity-result-root .identity-summary-card");
+      await page.waitForSelector("#network-risk-reselect");
       const resultText = await page.locator("#identity-result-root").innerText();
       ok("cross-border result uses the broader merchant name", resultText.includes("跨境商家"), resultText.slice(0, 180));
       await page.close();
     },
   },
   {
-    name: "AI 用户：核心产品可达时生成正式分数，开发工具继续作为补充探测",
+    name: "AI 用户：核心产品可达时生成完整身份依据，开发工具继续作为补充探测",
     async run({ browser, base, ok }) {
       const page = await browser.newPage({ locale: "en-US", timezoneId: "America/Los_Angeles" });
       await routeFixtures(page, base.origin, { autoStart: false });
@@ -1995,12 +2001,15 @@ const scenarios = [
       await page.locator('input[value="ai_worker"]').check();
       await page.locator("#identity-start").click();
       await waitForScore(page);
-      await page.waitForFunction(() => /^\d+$/.test(document.querySelector("#identity-match-score")?.textContent.trim()));
+      await page.waitForSelector("#network-risk-reselect");
       const resultText = await page.locator("#identity-result-root").innerText();
       const connectivityText = await page.locator("#sec-conn").innerText();
       ok(
-        "AI core product probes can produce a formal identity score",
-        /Identity Match Score/i.test(resultText) && /^\d+$/.test(await page.locator("#identity-match-score").innerText()),
+        "AI core product probes can produce identity reasoning without a second percentage",
+        resultText.includes("AI 用户") &&
+          resultText.includes("为什么像") &&
+          !/目标匹配度|Identity Match Score/i.test(resultText) &&
+          (await page.locator("#identity-match-score, .identity-match-score").count()) === 0,
         resultText.slice(0, 180),
       );
       ok(
@@ -2051,8 +2060,8 @@ const scenarios = [
       ok(
         "successful status and supplemental tool probes cannot replace failed core AI products",
         ["Cursor", "GitHub", "npm Registry", "PyPI"].every((label) => connectivityText.includes(label)) &&
-          (await page.locator("#identity-match-score").innerText()).trim() === "证据不足" &&
-          (await page.locator(".identity-score-total").innerText()).trim() === "暂不评分" &&
+          (await page.locator("#identity-match-score, .identity-match-score").count()) === 0 &&
+          resultText.includes("尚未确认") &&
           !resultText.includes("证据收集中"),
         connectivityText.slice(0, 400),
       );
@@ -2125,7 +2134,7 @@ const scenarios = [
       ok("mobile identity selector collapses to one column", mobileIdentityColumns === 1, `columns=${mobileIdentityColumns}`);
       await page.locator("#identity-generic").click();
       await waitForScore(page);
-      await page.waitForSelector("#identity-result-root .identity-summary-card");
+      await page.waitForSelector("#network-risk-reselect");
       const resultText = await page.locator("#identity-result-root").innerText();
       const resultOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       const ipCardAudit = await page.locator("#ip-snapshot-card").evaluate((card) => {
@@ -2355,13 +2364,13 @@ const scenarios = [
       await waitForScore(page);
       await page.evaluate(() => {
         document.documentElement.style.scrollBehavior = "auto";
-        document.querySelector("#sec-score")?.scrollIntoView();
+        document.querySelector("#sec-conn")?.scrollIntoView();
       });
-      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "sec-score");
-      await page.locator('[data-identity-action="reselect"]').click();
+      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "sec-conn");
+      await page.locator("#network-risk-reselect").click();
       const staleNavigationPrepared = await page.evaluate(() => {
-        const hiddenNetworkLink = document.querySelector('.nav-item[data-nav="sec-score"]');
-        hiddenNetworkLink.onclick();
+        const hiddenConnectivityLink = document.querySelector('.nav-item[data-nav="sec-conn"]');
+        hiddenConnectivityLink.onclick();
         const active = document.querySelector(".nav-item.is-active");
         return {
           active: active?.dataset.nav,
@@ -2372,9 +2381,9 @@ const scenarios = [
       });
       ok(
         "reselection test starts the next analysis from a stale non-identity navigation state",
-        staleNavigationPrepared.active === "sec-score" &&
+        staleNavigationPrepared.active === "sec-conn" &&
           staleNavigationPrepared.current === "location" &&
-          staleNavigationPrepared.hash === "#sec-score",
+          staleNavigationPrepared.hash === "#sec-conn",
         JSON.stringify(staleNavigationPrepared),
       );
       const requestStart = requests.length;
@@ -2603,10 +2612,13 @@ const scenarios = [
       await waitForScore(page);
       await page.locator("#copy-summary").click();
       const copied = await page.evaluate(() => window.__copiedSummary);
-      ok("generic environment share title", copied.startsWith("AI Signal Guard · 数字环境综合结论"), copied);
+      ok("generic environment share title", copied.startsWith("AI Signal Guard · 高级网络风险诊断"), copied);
       ok(
-        "generic share keeps coverage without inventing a target match score",
-        copied.includes("通用分析不预设目标画像") && copied.includes("证据覆盖") && !copied.includes("Identity Match Score："),
+        "generic share keeps the network reference score without inventing a target match score",
+        copied.includes("当前分析：通用数字身份") &&
+          /网络信号参考分：\d+\/100/.test(copied) &&
+          !/Identity Match Score|目标匹配度/.test(copied) &&
+          !copied.includes("证据覆盖"),
         copied,
       );
       ok("product URL retained", copied.includes("https://betaer.github.io/AiSignalGuard/"), copied);
@@ -2626,7 +2638,7 @@ const scenarios = [
       await waitForScore(chinesePage);
       await chinesePage.locator("#copy-summary").click();
       const chineseCopied = await chinesePage.evaluate(() => window.__copiedSummary);
-      ok("Chinese locale keeps the generic environment conclusion", chineseCopied.includes("数字环境综合结论"), chineseCopied);
+      ok("Chinese locale keeps the generic network-risk conclusion", chineseCopied.includes("高级网络风险诊断"), chineseCopied);
       ok("Chinese identity share retains the product URL", chineseCopied.includes("https://betaer.github.io/AiSignalGuard/"), chineseCopied);
       ok("Chinese identity share stays within X budget", twitterWeightedLength(chineseCopied) <= 280, `length=${twitterWeightedLength(chineseCopied)}`);
       await chinesePage.close();
@@ -2641,8 +2653,10 @@ const scenarios = [
       await hongKongPage.locator("#copy-summary").click();
       const hongKongCopied = await hongKongPage.evaluate(() => window.__copiedSummary);
       ok(
-        "Hong Kong exit keeps the generic environment conclusion without a target score",
-        hongKongCopied.includes("数字环境综合结论") && !hongKongCopied.includes("Identity Match Score"),
+        "Hong Kong exit keeps the generic network-risk conclusion without a target score",
+        hongKongCopied.includes("高级网络风险诊断") &&
+          /网络信号参考分：\d+\/100/.test(hongKongCopied) &&
+          !/Identity Match Score|目标匹配度/.test(hongKongCopied),
         hongKongCopied,
       );
       await hongKongPage.close();
@@ -3135,11 +3149,12 @@ const scenarios = [
         `icons=${staticAudit.iconCount}, named=${staticAudit.namedCount}`,
       );
       ok(
-        "identity analysis is the first navigation item and owns the initial current state",
-        staticAudit.activeNav === "身份分析" &&
+        "network risk is the first navigation item and owns the initial current state",
+        staticAudit.activeNav === "网络风险" &&
           staticAudit.activeCurrent === "location" &&
           staticAudit.navOrder[0]?.id === "identity-result-root" &&
-          staticAudit.navOrder[0]?.href === "#identity-result-root",
+          staticAudit.navOrder[0]?.href === "#identity-result-root" &&
+          !staticAudit.navOrder.some((item) => item.id === "sec-score"),
         JSON.stringify({ active: staticAudit.activeNav, current: staticAudit.activeCurrent, first: staticAudit.navOrder[0] }),
       );
       ok(
@@ -3151,10 +3166,14 @@ const scenarios = [
         document.documentElement.style.scrollBehavior = "auto";
         document.querySelector("#sec-score")?.scrollIntoView();
       });
-      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.textContent.trim() === "网络风险");
+      await page.waitForFunction(
+        () => document.querySelector(".nav-item.is-active")?.dataset.nav === "identity-result-root",
+      );
       ok(
-        "scrolling into network diagnostics updates the navigation state",
-        (await page.locator(".nav-item.is-active").innerText()).trim() === "网络风险",
+        "scrolling into the risk hero keeps the consolidated network-risk navigation state",
+        (await page.locator(".nav-item.is-active").innerText()).trim() === "网络风险" &&
+          (await page.locator(".nav-item.is-active").getAttribute("data-nav")) === "identity-result-root" &&
+          (await page.locator('.nav-item[data-nav="sec-score"]').count()) === 0,
         await page.locator(".nav-item.is-active").innerText(),
       );
       const identityNav = page.locator('.nav-item[data-nav="identity-result-root"]');
@@ -3164,12 +3183,12 @@ const scenarios = [
       await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "identity-result-root");
       const identityAnchorAudit = await page.evaluate(() => {
         const header = document.querySelector(".topbar").getBoundingClientRect();
-        const card = document.querySelector(".identity-summary-card").getBoundingClientRect();
+        const hero = document.querySelector("#sec-score").getBoundingClientRect();
         const focused = document.activeElement;
         const active = document.querySelector(".nav-item.is-active");
         return {
           headerBottom: header.bottom,
-          cardTop: card.top,
+          heroTop: hero.top,
           focusedNav: focused?.dataset?.nav || "",
           focusedTag: focused?.tagName || "",
           current: active?.getAttribute("aria-current"),
@@ -3179,14 +3198,14 @@ const scenarios = [
         };
       });
       ok(
-        "keyboard activation keeps focus/current state and positions identity content below the sticky header",
+        "keyboard activation keeps focus/current state and positions the risk hero below the sticky header",
         identityAnchorAudit.focusedTag === "A" &&
           identityAnchorAudit.focusedNav === "identity-result-root" &&
           identityAnchorAudit.current === "location" &&
           identityAnchorAudit.currentCount === 1 &&
           identityAnchorAudit.hash === "#identity-result-root" &&
           identityAnchorAudit.historyLength === identityHistoryBefore &&
-          identityAnchorAudit.cardTop >= identityAnchorAudit.headerBottom + 4,
+          identityAnchorAudit.heroTop >= identityAnchorAudit.headerBottom + 4,
         JSON.stringify(identityAnchorAudit),
       );
       await page.keyboard.press("Enter");
@@ -3407,20 +3426,20 @@ const scenarios = [
           mobileAudit.touchTargets.every(([width, height]) => width >= 40 && height >= 40),
         JSON.stringify(mobileAudit),
       );
-      await page.evaluate(() => document.querySelector("#sec-score")?.scrollIntoView());
-      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "sec-score");
+      await page.evaluate(() => document.querySelector("#sec-conn")?.scrollIntoView());
+      await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "sec-conn");
       await page.locator('.nav-item[data-nav="identity-result-root"]').focus();
       await page.keyboard.press("Enter");
       await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "identity-result-root");
       const mobileAnchorAudit = await page.evaluate(() => ({
         headerBottom: document.querySelector(".topbar").getBoundingClientRect().bottom,
-        cardTop: document.querySelector(".identity-summary-card").getBoundingClientRect().top,
+        heroTop: document.querySelector("#sec-score").getBoundingClientRect().top,
         focusedNav: document.activeElement?.dataset?.nav || "",
         current: document.querySelector(".nav-item.is-active")?.getAttribute("aria-current"),
       }));
       ok(
-        "mobile identity navigation clears the sticky header and preserves keyboard focus",
-        mobileAnchorAudit.cardTop >= mobileAnchorAudit.headerBottom + 4 &&
+        "mobile network-risk navigation clears the sticky header and preserves keyboard focus",
+        mobileAnchorAudit.heroTop >= mobileAnchorAudit.headerBottom + 4 &&
           mobileAnchorAudit.focusedNav === "identity-result-root" &&
           mobileAnchorAudit.current === "location",
         JSON.stringify(mobileAnchorAudit),
@@ -3906,7 +3925,6 @@ const scenarios = [
       });
       await page.goto(base.href);
       await page.locator("#sec-score").waitFor({ state: "visible" });
-      await page.locator("#sec-score > summary").click();
       const identity = page.locator('[data-score-segment="identity"]');
       const ip = page.locator('[data-score-segment="ip"]');
       await identity.waitFor({ state: "visible" });
@@ -4483,7 +4501,7 @@ const scenarios = [
     },
   },
   {
-    name: "结果信息架构：单一主结论、信号归位和五项工具栏",
+    name: "根首页风险首屏：唯一诊断主结论、身份分隔离与旧链接兼容",
     async run({ browser, base, ok }) {
       const page = await browser.newPage({
         locale: "en-US",
@@ -4506,36 +4524,138 @@ const scenarios = [
       await page.locator('input[value="tiktok_creator"]').check();
       await page.locator("#identity-start").click();
       await waitForScore(page, 60000, { openDiagnostics: false });
-      await page.waitForSelector("#identity-result-root .identity-summary-card");
+      await page.waitForSelector("#network-risk-reselect");
 
-      const structure = await page.locator(".identity-result").evaluate((root) => {
-        const children = Array.from(root.children);
-        const reasons = root.querySelector(".identity-reasons-grid")?.closest("section");
-        const advice = root.querySelector(".identity-advice");
-        const scoring = root.querySelector("#identity-scoring-details");
+      const structure = await page.locator("#identity-result-root").evaluate((root) => {
+        const resultContent = root.querySelector(":scope > #identity-result-content");
+        const result = resultContent?.querySelector(":scope > .identity-result");
+        const children = Array.from(result?.children || []);
+        const reasons = result?.querySelector(".identity-reasons-grid")?.closest("section");
+        const advice = result?.querySelector(".identity-advice");
+        const scoring = result?.querySelector("#identity-scoring-details");
+        const riskHero = root.querySelector(":scope > #sec-score");
+        const scoreNumber = riskHero?.querySelector("#score-number");
+        const scoreNodes = Array.from(riskHero?.querySelectorAll("#score-nodes .score-node") || []);
         return {
+          rootOrder: Array.from(root.children).map((child) => child.id),
+          riskHeroTag: riskHero?.tagName || "",
+          riskHeroVisible: Boolean(riskHero?.getClientRects().length),
+          scoreNumberVisible: Boolean(scoreNumber?.getClientRects().length),
+          scoreNodeCount: scoreNodes.length,
+          visibleScoreNodeCount: scoreNodes.filter((node) => node.getClientRects().length).length,
+          scoreStatus: riskHero?.querySelector("#score-status")?.textContent.trim() || "",
+          summaryCardCount: root.querySelectorAll(".identity-summary-card").length,
+          secScoreCount: document.querySelectorAll("#sec-score").length,
+          scoreNumberCount: document.querySelectorAll("#score-number").length,
+          scoreNodesCount: document.querySelectorAll("#score-nodes").length,
+          resultContentCount: document.querySelectorAll("#identity-result-content").length,
+          reselectCount: document.querySelectorAll("#network-risk-reselect").length,
+          legacyReselectCount: document.querySelectorAll('[data-identity-action="reselect"]').length,
           childClasses: children.map((child) => child.className),
           reasonsIndex: children.indexOf(reasons),
           adviceIndex: children.indexOf(advice),
           scoringIndex: children.indexOf(scoring),
-          standaloneSignalSections: root.querySelectorAll(".identity-signal-section, .identity-signal-grid").length,
-          detailTableCount: root.querySelectorAll(".identity-details-table").length,
+          standaloneSignalSections: result?.querySelectorAll(".identity-signal-section, .identity-signal-grid").length || 0,
+          detailTableCount: result?.querySelectorAll(".identity-details-table").length || 0,
         };
       });
       ok(
-        "why-like and why-unlike appear immediately after the compact conclusion",
-        structure.reasonsIndex === 1,
+        "the result root starts with one always-visible advanced network risk section",
+        structure.rootOrder.join(",") === "sec-score,identity-result-content" &&
+          structure.riskHeroTag === "SECTION" &&
+          structure.riskHeroVisible &&
+          structure.scoreNumberVisible &&
+          structure.scoreNodeCount === 6 &&
+          structure.visibleScoreNodeCount === 6 &&
+          structure.scoreStatus === "网络信号参考分",
         JSON.stringify(structure),
       );
       ok(
-        "alignment advice follows the comparison without a duplicate full-scoring block",
-        structure.adviceIndex === 2 && structure.scoringIndex === -1 && structure.detailTableCount === 0,
+        "the risk hero keeps a single stable score DOM and removes the old identity summary card",
+        structure.secScoreCount === 1 &&
+          structure.scoreNumberCount === 1 &&
+          structure.scoreNodesCount === 1 &&
+          structure.resultContentCount === 1 &&
+          structure.summaryCardCount === 0 &&
+          structure.reselectCount === 1 &&
+          structure.legacyReselectCount === 0,
         JSON.stringify(structure),
       );
       ok(
-        "standalone identity signal and duplicate detail blocks are removed",
-        structure.standaloneSignalSections === 0,
+        "identity evidence begins with comparison and advice without a duplicate summary or score block",
+        structure.reasonsIndex === 0 &&
+          structure.adviceIndex === 1 &&
+          structure.scoringIndex === -1 &&
+          structure.detailTableCount === 0 &&
+          structure.standaloneSignalSections === 0,
         JSON.stringify(structure),
+      );
+
+      const selectedScoreState = await page.locator("#identity-result-root").evaluate((root) => {
+        const visibleIdentityScores = Array.from(document.querySelectorAll(".identity-match-score")).filter(
+          (node) => node.getClientRects().length,
+        );
+        const visibleText = document.body.innerText;
+        const visibleNetworkScores = Array.from(document.querySelectorAll("#score-number")).filter(
+          (node) => node.getClientRects().length,
+        );
+        const navItems = Array.from(document.querySelectorAll("#nav-list .nav-item"));
+        const idCounts = Array.from(document.querySelectorAll("[id]")).reduce((counts, node) => {
+          counts[node.id] = (counts[node.id] || 0) + 1;
+          return counts;
+        }, {});
+        return {
+          context: root.querySelector("#network-risk-profile-context")?.textContent.trim() || "",
+          target: root.querySelector("#network-risk-profile-target")?.textContent.trim() || "",
+          identityScoreCount: visibleIdentityScores.length,
+          identityScoreIdCount: document.querySelectorAll("#identity-match-score").length,
+          networkScoreCount: visibleNetworkScores.length,
+          networkScoreValue: visibleNetworkScores[0]?.textContent.trim() || "",
+          visiblePerHundredCount: (visibleText.match(/\/\s*100/g) || []).length,
+          embeddedNumericScoringCount: Array.from(
+            document.querySelectorAll(".identity-signal-card-body dl, .match-detail-weight"),
+          ).filter((node) => node.getClientRects().length).length,
+          hasSecondaryScoringCopy: /Identity Match Score|目标匹配度\s*\d|得分贡献|权重\s*\d+%/.test(visibleText),
+          duplicateIds: Object.entries(idCounts)
+            .filter(([, count]) => count > 1)
+            .map(([id, count]) => `${id}:${count}`),
+          scoreStatus: root.querySelector("#score-status")?.textContent.trim() || "",
+          h1Count: root.querySelectorAll("h1").length,
+          h1Text: root.querySelector("h1")?.textContent.trim() || "",
+          firstNavId: navItems[0]?.dataset.nav || "",
+          firstNavLabel: navItems[0]?.textContent.trim() || "",
+          firstNavHref: navItems[0]?.getAttribute("href") || "",
+          scoreNavCount: navItems.filter((item) => item.dataset.nav === "sec-score").length,
+        };
+      });
+      ok(
+        "a selected profile keeps identity context but only the network reference numeric score",
+        selectedScoreState.context.includes("自媒体创作者") &&
+          selectedScoreState.target.includes("目标画像") &&
+          selectedScoreState.identityScoreCount === 0 &&
+          selectedScoreState.identityScoreIdCount === 0 &&
+          selectedScoreState.networkScoreCount === 1 &&
+          /^\d+$/.test(selectedScoreState.networkScoreValue) &&
+          selectedScoreState.visiblePerHundredCount === 0 &&
+          selectedScoreState.embeddedNumericScoringCount === 0 &&
+          !selectedScoreState.hasSecondaryScoringCopy &&
+          selectedScoreState.scoreStatus === "网络信号参考分",
+        JSON.stringify(selectedScoreState),
+      );
+      ok(
+        "the completed result keeps every DOM id unique",
+        selectedScoreState.duplicateIds.length === 0,
+        selectedScoreState.duplicateIds.join(",") || "all unique",
+      );
+      ok(
+        "the risk hero owns the only H1 and the first navigation destination without a duplicate score link",
+        selectedScoreState.h1Count === 1 &&
+          selectedScoreState.h1Text === "高级网络风险诊断" &&
+          selectedScoreState.firstNavId === "identity-result-root" &&
+          selectedScoreState.firstNavLabel === "网络风险" &&
+          selectedScoreState.firstNavHref === "#identity-result-root" &&
+          selectedScoreState.scoreNavCount === 0,
+        JSON.stringify(selectedScoreState),
       );
 
       const embeddedSignals = await page.locator(".identity-signal-card").evaluateAll((cards) =>
@@ -4544,6 +4664,7 @@ const scenarios = [
           section: card.closest("#section-root .section")?.id || "",
           tag: card.tagName,
           open: card.open,
+          hasNumericScoring: Boolean(card.querySelector(".identity-signal-card-body dl, .match-detail-weight")),
         })),
       );
       const expectedSignalSections = {
@@ -4583,6 +4704,7 @@ const scenarios = [
             (signal) =>
               signal.tag === "DETAILS" &&
               !signal.open &&
+              !signal.hasNumericScoring &&
               expectedSignalSections[signal.id] === signal.section,
           ),
         JSON.stringify(embeddedSignals),
@@ -4678,27 +4800,29 @@ const scenarios = [
         JSON.stringify(signalStatusStyles),
       );
 
-      const advancedState = await page.locator("#sec-score").evaluate((details) => ({
-        tag: details.tagName,
-        open: details.open,
-        riskLabel: details.querySelector("#network-risk-label")?.textContent.trim() || "",
-        riskCounts: details.querySelector("#network-risk-counts")?.textContent.trim() || "",
-        redChips: details.querySelectorAll(".score-risk-chip-red").length,
-        amberChips: details.querySelectorAll(".score-risk-chip-amber").length,
-        unconfirmedChips: details.querySelectorAll(".score-risk-chip-unconfirmed").length,
-        visibleScore: Boolean(details.querySelector("#score-number")?.getClientRects().length),
+      const advancedState = await page.locator("#sec-score").evaluate((section) => ({
+        tag: section.tagName,
+        riskLabel: section.querySelector("#network-risk-label")?.textContent.trim() || "",
+        riskCounts: section.querySelector("#network-risk-counts")?.textContent.trim() || "",
+        redChips: section.querySelectorAll(".score-risk-chip-red").length,
+        amberChips: section.querySelectorAll(".score-risk-chip-amber").length,
+        unconfirmedChips: section.querySelectorAll(".score-risk-chip-unconfirmed").length,
+        visibleScore: Boolean(section.querySelector("#score-number")?.getClientRects().length),
+        visibleNodes: Array.from(section.querySelectorAll("#score-nodes .score-node")).filter(
+          (node) => node.getClientRects().length,
+        ).length,
       }));
       const riskCountMatch = advancedState.riskCounts.match(
         /高风险\s+(\d+)\s+项\s*\/\s*需留意\s+(\d+)\s+项\s*\/\s*未确认\s+(\d+)\s+项/,
       );
       ok(
-        "advanced diagnostics defaults to a compact risk disclosure without a visible second score",
-        advancedState.tag === "DETAILS" &&
-          !advancedState.open &&
+        "advanced diagnostics are the complete always-visible risk hero",
+        advancedState.tag === "SECTION" &&
           Boolean(advancedState.riskLabel) &&
           /高风险|需留意|未确认|检测中|未发现/.test(advancedState.riskLabel) &&
           /高风险|需留意|未确认/.test(advancedState.riskCounts) &&
-          !advancedState.visibleScore,
+          advancedState.visibleScore &&
+          advancedState.visibleNodes === 6,
         JSON.stringify(advancedState),
       );
       ok(
@@ -4777,21 +4901,126 @@ const scenarios = [
         requests.filter((url) => url.includes("github.com")).join(","),
       );
 
+      const responsiveAudits = [];
+      for (const viewport of [
+        { width: 1280, height: 900 },
+        { width: 390, height: 844 },
+        { width: 300, height: 700 },
+      ]) {
+        await page.setViewportSize(viewport);
+        responsiveAudits.push(
+          await page.evaluate(() => {
+            const hero = document.querySelector("#sec-score");
+            const content = document.querySelector("#identity-result-content");
+            const ring = document.querySelector("#score-ring");
+            const reselect = document.querySelector("#network-risk-reselect");
+            const nodes = Array.from(document.querySelectorAll("#score-nodes .score-node"));
+            const heroRect = hero.getBoundingClientRect();
+            const contentRect = content.getBoundingClientRect();
+            const ringRect = ring.getBoundingClientRect();
+            const reselectRect = reselect.getBoundingClientRect();
+            const nodeRects = nodes.map((node) => node.getBoundingClientRect());
+            return {
+              width: innerWidth,
+              overflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
+              heroInsideViewport: heroRect.left >= -1 && heroRect.right <= innerWidth + 1,
+              heroBeforeIdentityEvidence: heroRect.top < contentRect.top,
+              ringVisible: ringRect.width > 0 && ringRect.height > 0,
+              nodeCount: nodes.length,
+              nodesInsideViewport: nodeRects.every((rect) => rect.left >= -1 && rect.right <= innerWidth + 1),
+              reselectTouchTarget: [reselectRect.width, reselectRect.height],
+            };
+          }),
+        );
+      }
+      ok(
+        "desktop, 390px and 300px keep the complete risk hero first and prevent horizontal overflow",
+        responsiveAudits.every(
+          (audit) =>
+            audit.overflow <= 1 &&
+            audit.heroInsideViewport &&
+            audit.heroBeforeIdentityEvidence &&
+            audit.ringVisible &&
+            audit.nodeCount === 6 &&
+            audit.nodesInsideViewport &&
+            (audit.width > 390 ||
+              (audit.reselectTouchTarget[0] >= 44 && audit.reselectTouchTarget[1] >= 44)),
+        ),
+        JSON.stringify(responsiveAudits),
+      );
+
+      await page.setViewportSize({ width: 1280, height: 900 });
+      const legacyHashAudit = async (hash) => {
+        await page.evaluate((nextHash) => {
+          document.documentElement.style.scrollBehavior = "auto";
+          history.replaceState(null, "", "#sec-trace");
+          location.hash = nextHash;
+        }, hash);
+        await page.waitForFunction((nextHash) => location.hash === nextHash, hash);
+        await page.waitForTimeout(120);
+        return page.evaluate(() => ({
+          hash: location.hash,
+          headerBottom: document.querySelector(".topbar").getBoundingClientRect().bottom,
+          riskTop: document.querySelector("#sec-score").getBoundingClientRect().top,
+          riskVisible: Boolean(document.querySelector("#sec-score")?.getClientRects().length),
+          activeNav: document.querySelector(".nav-item.is-active")?.dataset.nav || "",
+        }));
+      };
+      const rootHashAudit = await legacyHashAudit("#identity-result-root");
+      const scoreHashAudit = await legacyHashAudit("#sec-score");
+      ok(
+        "both the published result hash and the former score hash resolve to the same visible risk hero",
+        rootHashAudit.hash === "#identity-result-root" &&
+          rootHashAudit.riskVisible &&
+          rootHashAudit.riskTop >= rootHashAudit.headerBottom + 4 &&
+          rootHashAudit.activeNav === "identity-result-root" &&
+          scoreHashAudit.hash === "#sec-score" &&
+          scoreHashAudit.riskVisible &&
+          scoreHashAudit.riskTop >= scoreHashAudit.headerBottom + 4 &&
+          scoreHashAudit.activeNav === "identity-result-root",
+        JSON.stringify({ rootHashAudit, scoreHashAudit }),
+      );
+
       await page.locator("#copy-ai-report").click();
       await page.waitForFunction(() => document.querySelector("#copy-ai-report")?.dataset.copyState === "copied");
       const report = await page.evaluate(() => window.__copiedSummary);
       ok(
-        "AI report contains one identity score and describes advanced diagnostics as risk counts",
-        (report.match(/Identity Match Score：\d+\/100/g) || []).length === 1 &&
+        "AI report keeps one network reference score and no superseded identity percentage",
+        (report.match(/网络信号参考分：\d+\/100/g) || []).length === 1 &&
+          !/Identity Match Score|目标匹配度：\s*\d+\s*\/\s*100/.test(report) &&
           !/Trust Score/.test(report) &&
           /高级网络风险/.test(report) &&
           /需留意项/.test(report),
         report.slice(0, 620),
       );
 
-      await page.locator("#sec-score > summary").click();
-      ok("advanced diagnostics can be opened before a new analysis", await page.locator("#sec-score").evaluate((details) => details.open));
-      await page.locator('[data-identity-action="reselect"]').click();
+      await page.locator('[data-panel="rules"]').click();
+      await page
+        .waitForFunction(
+          () => document.querySelector('[data-panel="rules"]')?.getAttribute("aria-expanded") === "true",
+          null,
+          { timeout: 3000 },
+        )
+        .catch(() => {});
+      const rulesState = await page.locator("#sec-score").evaluate((section) => ({
+        tag: section.tagName,
+        heroVisible: Boolean(section.getClientRects().length),
+        scoreVisible: Boolean(section.querySelector("#score-number")?.getClientRects().length),
+        rulesVisible: !section.querySelector("#rules-panel")?.hidden,
+        privacyHidden: Boolean(section.querySelector("#privacy-panel")?.hidden),
+        rulesExpanded: section.querySelector('[data-panel="rules"]')?.getAttribute("aria-expanded"),
+      }));
+      ok(
+        "score rules expand independently without hiding or collapsing the risk hero",
+        rulesState.tag === "SECTION" &&
+          rulesState.heroVisible &&
+          rulesState.scoreVisible &&
+          rulesState.rulesVisible &&
+          rulesState.privacyHidden &&
+          rulesState.rulesExpanded === "true",
+        JSON.stringify(rulesState),
+      );
+      await page.locator("#network-risk-reselect").click();
       await page.locator('input[value="ai_worker"]').check();
       await page.locator("#identity-start").click();
       await page.waitForFunction(() => document.body.dataset.appStage === "running");
@@ -4799,7 +5028,8 @@ const scenarios = [
       await page.waitForFunction(
         () =>
           document.body.dataset.appStage === "result" &&
-          document.querySelector("#identity-result-title")?.textContent.includes("AI 用户"),
+          document.querySelector("#network-risk-profile-context")?.textContent.includes("AI 用户") &&
+          Boolean(document.querySelector("#network-risk-reselect")?.getClientRects().length),
         null,
         { timeout: 60000 },
       );
@@ -4810,15 +5040,34 @@ const scenarios = [
           section: card.closest("#section-root .section")?.id || "",
         })),
       );
+      const duplicateIdsAfterRerun = await page.locator("[id]").evaluateAll((nodes) => {
+        const counts = nodes.reduce((result, node) => {
+          result[node.id] = (result[node.id] || 0) + 1;
+          return result;
+        }, {});
+        return Object.entries(counts)
+          .filter(([, count]) => count > 1)
+          .map(([id, count]) => `${id}:${count}`);
+      });
       ok(
-        "a new identity analysis resets advanced diagnostics to its collapsed default",
-        !(await page.locator("#sec-score").evaluate((details) => details.open)),
+        "a new identity analysis keeps the single risk hero visible and updates its target context",
+        await page.locator("#sec-score").evaluate(
+          (section) =>
+            section.tagName === "SECTION" &&
+            Boolean(section.getClientRects().length) &&
+            section.querySelector("#network-risk-profile-context")?.textContent.includes("AI 用户"),
+        ),
       );
       ok(
         "a new identity analysis resets every identity disclosure and places browser evidence with fingerprints",
         nextIdentityDisclosures.every((item) => !item.open) &&
           nextIdentityDisclosures.some((item) => item.id === "browser" && item.section === "sec-fp"),
         JSON.stringify(nextIdentityDisclosures),
+      );
+      ok(
+        "a new identity analysis does not introduce duplicate DOM ids",
+        duplicateIdsAfterRerun.length === 0,
+        duplicateIdsAfterRerun.join(",") || "all unique",
       );
       await page.close();
 
@@ -4827,21 +5076,80 @@ const scenarios = [
       await genericPage.goto(base.href);
       await genericPage.locator("#identity-generic").click();
       await waitForScore(genericPage, 60000, { openDiagnostics: false });
-      await genericPage.waitForSelector("#identity-result-root .identity-summary-card");
-      const genericState = await genericPage.locator(".identity-summary-card").evaluate((card) => ({
-        text: card.textContent.trim(),
-        visiblePrimaryScore: Boolean(card.querySelector("#identity-match-score")?.getClientRects().length),
-        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      }));
+      await genericPage.waitForSelector("#network-risk-reselect");
+      const genericState = await genericPage.locator("#identity-result-root").evaluate((root) => {
+        const visibleNetworkScores = Array.from(root.querySelectorAll("#score-number")).filter(
+          (node) => node.getClientRects().length,
+        );
+        return {
+          context: root.querySelector("#network-risk-profile-context")?.textContent.trim() || "",
+          target: root.querySelector("#network-risk-profile-target")?.textContent.trim() || "",
+          evidenceText: root.querySelector("#identity-result-content")?.textContent.trim() || "",
+          visibleIdentityScores: Array.from(root.querySelectorAll(".identity-match-score")).filter(
+            (node) => node.getClientRects().length,
+          ).length,
+          identityScoreIdCount: root.querySelectorAll("#identity-match-score").length,
+          visibleRiskScoreCount: visibleNetworkScores.length,
+          networkScoreValue: visibleNetworkScores[0]?.textContent.trim() || "",
+          scoreStatus: root.querySelector("#score-status")?.textContent.trim() || "",
+          summaryCardCount: root.querySelectorAll(".identity-summary-card").length,
+          visiblePerHundredCount: (root.innerText.match(/\/\s*100/g) || []).length,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
       ok(
-        "generic analysis shows a non-numeric environment conclusion without page overflow",
-        /数字环境综合结论/.test(genericState.text) &&
-          !genericState.visiblePrimaryScore &&
-          !/\b\d+\s*\/\s*100\b/.test(genericState.text) &&
+        "generic analysis keeps the network reference score but shows no identity percentage or old summary card",
+        genericState.context === "通用数字身份分析" &&
+          genericState.target.includes("不预设地区、职业或真实身份") &&
+          genericState.evidenceText.includes("哪些信号一致，哪些存在差异") &&
+          genericState.visibleIdentityScores === 0 &&
+          genericState.identityScoreIdCount === 0 &&
+          genericState.visibleRiskScoreCount === 1 &&
+          /^\d+$/.test(genericState.networkScoreValue) &&
+          genericState.scoreStatus === "网络信号参考分" &&
+          genericState.summaryCardCount === 0 &&
+          genericState.visiblePerHundredCount === 0 &&
           genericState.overflow <= 1,
         JSON.stringify(genericState),
       );
       await genericPage.close();
+
+      const directHashAudits = [];
+      for (const hash of ["#identity-result-root", "#sec-score"]) {
+        const hashPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        await routeFixtures(hashPage, base.origin, { autoStart: false });
+        await hashPage.goto(new URL(hash, base).href);
+        const initialHash = await hashPage.evaluate(() => location.hash);
+        await hashPage.locator("#identity-generic").click();
+        await waitForScore(hashPage, 60000, { openDiagnostics: false });
+        await hashPage.waitForSelector("#network-risk-reselect");
+        directHashAudits.push(
+          await hashPage.evaluate(
+            ({ requestedHash, initialHash }) => ({
+              requestedHash,
+              initialHash,
+              finalHash: location.hash,
+              riskVisible: Boolean(document.querySelector("#sec-score")?.getClientRects().length),
+              riskIsFirst: document.querySelector("#identity-result-root")?.firstElementChild?.id === "sec-score",
+              activeNav: document.querySelector(".nav-item.is-active")?.dataset.nav || "",
+            }),
+            { requestedHash: hash, initialHash },
+          ),
+        );
+        await hashPage.close();
+      }
+      ok(
+        "directly opened published and legacy result hashes both resolve to the consolidated risk hero after analysis",
+        directHashAudits.every(
+          (audit) =>
+            audit.initialHash === audit.requestedHash &&
+            audit.finalHash === "#identity-result-root" &&
+            audit.riskVisible &&
+            audit.riskIsFirst &&
+            audit.activeNav === "identity-result-root",
+        ),
+        JSON.stringify(directHashAudits),
+      );
     },
   },
 ];

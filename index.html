@@ -23,14 +23,14 @@
     <meta name="twitter:image" content="https://betaer.github.io/AiSignalGuard/assets/og.png">
     <meta name="twitter:image:alt" content="AI Signal Guard 数字身份匹配分析">
     <link rel="icon" href="favicon.svg?v=20260708-3" type="image/svg+xml">
-    <link rel="stylesheet" href="styles.min.css?v=20260718-7">
+    <link rel="stylesheet" href="styles.min.css?v=20260718-8">
     <script>
       window.dataLayer = window.dataLayer || [];
       window.gtag = window.gtag || function () {
         window.dataLayer.push(arguments);
       };
     </script>
-    <script vite-ignore src="app.min.js?v=20260718-7" defer></script>
+    <script vite-ignore src="app.min.js?v=20260718-8" defer></script>
   </head>
   <body data-app-stage="select">
     <a class="skip-link" href="#main">跳到主要内容</a>
@@ -275,36 +275,40 @@
 
       <div class="analysis-workspace" id="analysis-workspace" hidden>
         <p class="visually-hidden" id="identity-result-status" role="status" aria-live="polite" aria-atomic="true"></p>
-        <div id="identity-result-root"></div>
-        <div id="section-root"></div>
-
-        <details class="score-stage network-risk-diagnostics" id="sec-score">
-        <summary class="network-risk-summary" id="score-title">
-          <span class="network-risk-summary-copy">
-            <span class="network-risk-kicker">补充诊断 · 不计入身份匹配分</span>
-            <strong>高级网络风险诊断</strong>
-          </span>
-          <span class="network-risk-summary-result">
+        <div id="identity-result-root">
+        <section
+          class="score-stage network-risk-diagnostics identity-risk-hero"
+          id="sec-score"
+          aria-labelledby="identity-result-title"
+        >
+        <header class="network-risk-summary" id="score-title">
+          <div class="network-risk-summary-copy">
+            <span class="network-risk-kicker" id="network-risk-profile-context">通用数字身份分析</span>
+            <h1 id="identity-result-title" tabindex="-1">高级网络风险诊断</h1>
+            <span class="network-risk-profile-target" id="network-risk-profile-target">
+              不预设地区、职业或真实身份
+            </span>
+          </div>
+          <div class="network-risk-summary-result">
             <strong id="network-risk-label">检测中</strong>
             <span id="network-risk-counts">正在收集风险证据</span>
-            <span class="network-risk-chevron" aria-hidden="true">›</span>
-          </span>
-        </summary>
+            <span class="network-risk-score-note">分数越高，已发现风险越少</span>
+            <button class="identity-reselect" id="network-risk-reselect" type="button">
+              重新选择目标身份
+            </button>
+          </div>
+        </header>
         <div class="network-risk-body">
         <p class="eyebrow">逐项风险信号</p>
         <div class="score-orbit">
-          <div class="score-core score-compatibility-score" aria-hidden="true">
+          <div class="score-core score-compatibility-score">
             <svg id="score-ring" class="score-gauge" viewBox="0 0 120 120" role="img" aria-label="网络信号参考分进度"></svg>
-            <div class="score-copy" role="status" aria-live="polite" aria-atomic="true">
+            <div class="score-copy" aria-hidden="true">
               <span class="score-number" id="score-number">··</span>
               <span class="score-status" id="score-status">检测中</span>
             </div>
           </div>
-          <div class="score-context-core" aria-hidden="true">
-            <strong>风险信号</strong>
-            <span>点击节点查看</span>
-          </div>
-          <div class="score-nodes" id="score-nodes" role="group" aria-label="评分分项详情"></div>
+          <div class="score-nodes" id="score-nodes" role="group" aria-label="网络风险评分分项详情"></div>
         </div>
         <p class="score-summary" id="score-summary">正在运行本地与联网检测…</p>
         <div class="score-insights" id="score-insights" aria-live="polite"></div>
@@ -312,18 +316,34 @@
         <div class="score-controls" role="group" aria-label="判定口径">
           <span>判定口径</span>
           <div class="segmented" role="group" aria-label="地区判定口径">
-            <button class="segmented-button is-active" type="button" data-region="cnhk">
+            <button class="segmented-button is-active" type="button" data-region="cnhk" aria-pressed="true">
               <span class="china-emphasis">大陆</span> + <span class="china-emphasis">港澳</span>
             </button>
-            <button class="segmented-button" type="button" data-region="cn">
+            <button class="segmented-button" type="button" data-region="cn" aria-pressed="false">
               仅<span class="china-emphasis">大陆</span>
             </button>
           </div>
         </div>
 
         <div class="score-links">
-          <button class="underlink" type="button" data-panel="rules">评分规则</button>
-          <button class="underlink" type="button" data-panel="privacy">隐私说明</button>
+          <button
+            class="underlink"
+            type="button"
+            data-panel="rules"
+            aria-controls="rules-panel"
+            aria-expanded="false"
+          >
+            评分规则
+          </button>
+          <button
+            class="underlink"
+            type="button"
+            data-panel="privacy"
+            aria-controls="privacy-panel"
+            aria-expanded="false"
+          >
+            隐私说明
+          </button>
         </div>
 
         <div class="info-panel" id="rules-panel" hidden>
@@ -365,7 +385,10 @@
           </p>
         </div>
         </div>
-        </details>
+        </section>
+        <div id="identity-result-content"></div>
+        </div>
+        <div id="section-root"></div>
       </div>
     </main>
 

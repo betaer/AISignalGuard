@@ -714,6 +714,7 @@ body[data-app-stage="result"] .analysis-progress {
 
 .analysis-workspace,
 #identity-result-root,
+#identity-result-content,
 #section-root {
   min-width: 0;
 }
@@ -725,126 +726,23 @@ body[data-app-stage="result"] .analysis-progress {
   padding-top: clamp(38px, 6vw, 68px);
 }
 
-.analysis-workspace > .score-stage,
 .analysis-workspace > #section-root {
   width: min(100%, 720px);
   margin-right: auto;
   margin-left: auto;
 }
 
-.identity-summary-card {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--line-2);
-  border-radius: 22px;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(122, 169, 129, 0.18), transparent 270px),
-    var(--surface);
-  box-shadow: var(--shadow);
-  padding: clamp(26px, 4vw, 42px);
+#identity-result-root > .score-stage {
+  width: 100%;
+  margin-right: auto;
+  margin-left: auto;
 }
 
-.identity-summary-main,
-.identity-summary-copy,
-.identity-summary-meta {
-  min-width: 0;
-}
-
-.identity-summary-target,
-.identity-summary-profile {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-}
-
-.identity-summary-icon {
-  display: inline-grid;
-  width: 46px;
-  height: 46px;
-  flex: none;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface-soft);
-  font-size: 24px;
-}
-
-.identity-summary-label,
-.identity-summary-kicker,
-.identity-score-label,
-.identity-match-score-label,
-.identity-section-kicker,
-.signal-label,
-.match-detail-label {
+.identity-summary-kicker {
   color: var(--muted-2);
   font: 10.5px/1.4 var(--mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.identity-summary-name {
-  display: block;
-  margin-top: 3px;
-  color: var(--ink);
-  font-size: clamp(19px, 2.4vw, 25px);
-  font-weight: 680;
-  letter-spacing: -0.025em;
-}
-
-.identity-summary-sentence {
-  max-width: 620px;
-  margin: 25px 0 0;
-  color: var(--ink);
-  font-size: clamp(17px, 2.3vw, 22px);
-  font-weight: 580;
-  letter-spacing: -0.02em;
-  line-height: 1.55;
-  text-wrap: balance;
-}
-
-.identity-summary-note,
-.identity-coverage {
-  margin: 11px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.identity-score-block,
-.identity-match-score {
-  min-width: 138px;
-  align-self: center;
-  border-left: 1px solid var(--line);
-  padding-left: 30px;
-  text-align: right;
-}
-
-.identity-score-number,
-.identity-match-score-value {
-  display: block;
-  margin-top: 8px;
-  color: var(--ink);
-  font: 680 clamp(48px, 7vw, 74px)/0.95 var(--mono);
-  letter-spacing: -0.08em;
-  font-variant-numeric: tabular-nums;
-}
-
-.identity-score-total {
-  color: var(--muted-2);
-  font: 12px/1 var(--mono);
-}
-
-.identity-match-score[data-score-state="unavailable"] .identity-match-score-value {
-  margin-top: 10px;
-  font: 680 20px/1.2 var(--sans);
-  letter-spacing: -0.015em;
-}
-
-.identity-match-score[data-score-state="unavailable"] .identity-score-total {
-  display: block;
-  margin-top: 5px;
 }
 
 .identity-result,
@@ -1127,51 +1025,6 @@ body[data-app-stage="result"] .analysis-progress {
 .advice,
 .identity-advice {
   background: var(--surface-soft);
-}
-
-.identity-summary-header {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.identity-summary-target {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.identity-summary-text {
-  max-width: 650px;
-  margin: 24px 0 0;
-  color: var(--ink);
-  font-size: clamp(17px, 2.3vw, 22px);
-  font-weight: 580;
-  letter-spacing: -0.02em;
-  line-height: 1.55;
-  text-wrap: balance;
-}
-
-.identity-coverage-meter {
-  width: min(100%, 300px);
-  height: 5px;
-  overflow: hidden;
-  margin-top: 9px;
-  border-radius: 999px;
-  background: #e8e8e3;
-}
-
-.identity-coverage-fill {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--green);
-  transition: width 260ms ease;
 }
 
 .identity-signal-card-header {
@@ -3809,40 +3662,6 @@ body[data-app-stage="result"] .analysis-progress {
     padding-top: 28px;
   }
 
-  .identity-summary-card {
-    border-radius: 17px;
-    padding: 23px 19px;
-  }
-
-  .identity-summary-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 22px;
-  }
-
-  .identity-score-block,
-  .identity-match-score {
-    width: 100%;
-    min-width: 0;
-    border-top: 1px solid var(--line);
-    border-left: 0;
-    padding-top: 18px;
-    padding-left: 0;
-    text-align: left;
-  }
-
-  .identity-score-number,
-  .identity-match-score-value {
-    font-size: 54px;
-  }
-
-  .identity-summary-sentence,
-  .identity-summary-text {
-    margin-top: 20px;
-    font-size: 17px;
-    text-wrap: auto;
-  }
-
   .identity-section-head {
     align-items: flex-start;
     flex-direction: column;
@@ -3912,75 +3731,38 @@ body[data-app-stage="result"] .analysis-progress {
   }
 }
 
-/* 2026-07-18 · 单一身份结论与渐进式风险诊断 */
-.identity-summary-card {
-  border-radius: 18px;
-  padding: clamp(22px, 3vw, 30px);
-}
-
-.identity-summary-card.identity-summary-generic {
-  background:
-    radial-gradient(circle at 100% 0%, rgba(122, 169, 129, 0.12), transparent 240px),
-    var(--surface);
-}
-
-.identity-summary-profile-generic {
-  gap: 0;
-}
-
-.identity-summary-header {
-  align-items: flex-start;
-}
-
-.identity-match-score {
-  min-width: 122px;
-  padding-left: 24px;
-}
-
-.identity-match-score-value {
-  font-size: clamp(42px, 5.5vw, 60px);
-}
-
-.identity-summary-text {
-  max-width: 720px;
-  margin-top: 18px;
-  font-size: clamp(16px, 2vw, 19px);
-}
-
-.identity-summary-footer {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  margin-top: 18px;
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
-}
-
-.identity-summary-footer .identity-coverage {
-  display: grid;
-  min-width: min(100%, 300px);
-  grid-template-columns: 1fr auto;
-  gap: 0 12px;
-  margin: 0;
-}
-
-.identity-summary-footer .identity-coverage-meter {
-  grid-column: 1 / -1;
-}
-
-.identity-summary-footer .identity-reselect {
-  flex: none;
+/* 2026-07-18 · 高级网络风险诊断首屏化 */
+#identity-result-content {
+  min-width: 0;
 }
 
 .identity-result-section,
 .identity-advice {
-  margin-top: 22px;
+  margin-top: 26px;
 }
 
 .identity-result-heading {
   margin-bottom: 11px;
   padding: 0 3px;
+}
+
+.identity-result-heading-with-context {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.identity-result-context {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+}
+
+.identity-result-profile {
+  color: var(--muted-2);
+  font: 10.5px/1.45 var(--mono);
 }
 
 .identity-result-heading h2 {
@@ -4005,17 +3787,14 @@ body[data-app-stage="result"] .analysis-progress {
   margin-top: 14px;
 }
 
-.network-risk-summary,
 .identity-signal-card > summary {
   list-style: none;
 }
 
-.network-risk-summary::-webkit-details-marker,
 .identity-signal-card > summary::-webkit-details-marker {
   display: none;
 }
 
-.network-risk-summary:focus-visible,
 .identity-signal-card > summary:focus-visible {
   outline: 3px solid rgba(34, 143, 70, 0.3);
   outline-offset: -3px;
@@ -4116,8 +3895,7 @@ body[data-app-stage="result"] .analysis-progress {
   gap: 7px;
 }
 
-.identity-signal-chevron,
-.network-risk-chevron {
+.identity-signal-chevron {
   display: inline-grid;
   color: var(--muted-2);
   font: 700 18px/1 var(--sans);
@@ -4127,8 +3905,7 @@ body[data-app-stage="result"] .analysis-progress {
   transition: transform 160ms ease;
 }
 
-.identity-signal-card[open] .identity-signal-chevron,
-.network-risk-diagnostics[open] .network-risk-chevron {
+.identity-signal-card[open] .identity-signal-chevron {
   transform: rotate(90deg);
 }
 
@@ -4136,32 +3913,8 @@ body[data-app-stage="result"] .analysis-progress {
   padding: 12px 13px 14px;
 }
 
-.identity-signal-card-body dl {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  margin: 0;
-}
-
-.identity-signal-card-body dl > div {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.identity-signal-card-body dt {
-  color: var(--muted-2);
-  font: 9.5px/1.4 var(--mono);
-}
-
-.identity-signal-card-body dd {
-  margin: 0;
-  color: var(--ink-2);
-  font: 650 10.5px/1.4 var(--mono);
-}
-
 .identity-signal-card-body .identity-signal-evidence {
-  margin: 9px 0 0;
+  margin: 0;
   color: var(--muted);
   font-size: 11.5px;
   line-height: 1.55;
@@ -4170,11 +3923,13 @@ body[data-app-stage="result"] .analysis-progress {
 .network-risk-diagnostics {
   scroll-margin-top: 92px;
   overflow: hidden;
-  margin-top: 46px;
+  margin-top: 0;
   border: 1px solid var(--line-2);
-  border-radius: 16px;
-  background: var(--surface);
-  box-shadow: 0 8px 28px rgba(31, 31, 25, 0.05);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(122, 169, 129, 0.13), transparent 310px),
+    var(--surface);
+  box-shadow: var(--shadow);
   padding: 0;
   text-align: left;
 }
@@ -4186,19 +3941,7 @@ body[data-app-stage="result"] .analysis-progress {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  cursor: pointer;
-  padding: 18px 21px;
-  transition:
-    background 170ms ease,
-    transform 100ms ease;
-}
-
-.network-risk-summary:hover {
-  background: #f8f9f5;
-}
-
-.network-risk-summary:active {
-  transform: translateY(1px);
+  padding: 24px 28px 21px;
 }
 
 .network-risk-summary-copy,
@@ -4215,13 +3958,23 @@ body[data-app-stage="result"] .analysis-progress {
   text-transform: uppercase;
 }
 
-.network-risk-summary-copy > strong {
+.network-risk-summary-copy > h1 {
+  margin: 0;
   color: var(--ink);
-  font-size: 15px;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 720;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+}
+
+.network-risk-profile-target {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .network-risk-summary-result {
-  padding-right: 24px;
   justify-items: end;
   text-align: right;
 }
@@ -4248,25 +4001,18 @@ body[data-app-stage="result"] .analysis-progress {
   font: 10px/1.45 var(--mono);
 }
 
-.network-risk-summary-result > .network-risk-chevron {
-  position: absolute;
-  top: 50%;
-  right: 20px;
-  font-size: 20px;
-  transform: translateY(-50%) rotate(0deg);
+.network-risk-summary-result > .network-risk-score-note {
+  color: #77776f;
 }
 
-.network-risk-diagnostics[open] .network-risk-summary-result > .network-risk-chevron {
-  transform: translateY(-50%) rotate(90deg);
-}
-
-.network-risk-diagnostics[open] > .network-risk-summary {
-  border-bottom: 1px solid var(--line);
-  background: #fafbf7;
+.network-risk-summary-result .identity-reselect {
+  min-height: 32px;
+  margin-top: 2px;
 }
 
 .network-risk-body {
-  padding: 28px 22px 24px;
+  border-top: 1px solid var(--line);
+  padding: 28px 28px 30px;
   text-align: center;
 }
 
@@ -4276,34 +4022,11 @@ body[data-app-stage="result"] .analysis-progress {
 }
 
 .score-compatibility-score {
-  display: none;
+  display: block;
 }
 
-.score-context-core {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 2;
-  display: grid;
-  width: 126px;
-  aspect-ratio: 1;
-  place-content: center;
-  gap: 6px;
-  border: 1px solid var(--line-2);
-  border-radius: 50%;
-  background: var(--surface-soft);
-  color: var(--ink-2);
-  text-align: center;
-  transform: translate(-50%, -50%);
-}
-
-.score-context-core strong {
-  font-size: 13px;
-}
-
-.score-context-core span {
-  color: var(--muted-2);
-  font: 9.5px/1.4 var(--mono);
+.identity-risk-hero .score-orbit {
+  width: min(100%, 460px);
 }
 
 @media (min-width: 721px) and (max-width: 1440px) and (min-height: 561px) {
@@ -4322,33 +4045,9 @@ body[data-app-stage="result"] .analysis-progress {
 }
 
 @media (max-width: 720px) {
-  .identity-summary-header,
-  .identity-summary-footer,
   .network-risk-summary {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .identity-summary-header {
-    gap: 16px;
-  }
-
-  .identity-match-score {
-    width: 100%;
-    min-width: 0;
-    border-top: 1px solid var(--line);
-    border-left: 0;
-    padding-top: 14px;
-    padding-left: 0;
-    text-align: left;
-  }
-
-  .identity-summary-footer {
-    gap: 12px;
-  }
-
-  .identity-summary-footer .identity-reselect {
-    align-self: flex-start;
   }
 
   .identity-reasons-grid,
@@ -4359,6 +4058,7 @@ body[data-app-stage="result"] .analysis-progress {
 
   .network-risk-summary {
     gap: 12px;
+    padding: 20px 18px 18px;
   }
 
   .network-risk-summary-result {
@@ -4366,8 +4066,121 @@ body[data-app-stage="result"] .analysis-progress {
     text-align: left;
   }
 
+  .network-risk-summary-result .identity-reselect {
+    min-height: 44px;
+  }
+
   .network-risk-body {
     padding-right: 14px;
     padding-left: 14px;
+  }
+
+  .identity-risk-hero .score-orbit {
+    width: min(100%, 330px);
+  }
+
+  .identity-result-heading-with-context {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .identity-result-context {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+}
+
+@media (max-width: 340px) {
+  .network-risk-body {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .identity-risk-hero .score-orbit {
+    display: flex;
+    width: 100%;
+    aspect-ratio: auto;
+    align-items: center;
+    flex-direction: column;
+    gap: 22px;
+    margin-bottom: 24px;
+  }
+
+  .identity-risk-hero .score-core {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 128px;
+    flex: 0 0 128px;
+    transform: none;
+  }
+
+  .identity-risk-hero .score-nodes {
+    position: relative;
+    inset: auto;
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .identity-risk-hero .score-node,
+  .identity-risk-hero .score-node[data-score-segment] {
+    position: relative;
+    top: auto;
+    left: auto;
+    display: flex;
+    width: 100%;
+    height: 48px;
+    min-width: 0;
+    justify-content: flex-start;
+    gap: 8px;
+    border-radius: 12px;
+    padding: 0 10px;
+    transform: none;
+    transition: box-shadow 160ms ease;
+  }
+
+  .identity-risk-hero .score-node-label {
+    position: static;
+    min-width: 0;
+    color: currentColor;
+    font-size: 10px;
+    text-align: left;
+    transform: none;
+  }
+
+  .identity-risk-hero .score-node .score-node-tip {
+    right: auto !important;
+    left: 0 !important;
+    width: calc(200% + 10px);
+    max-width: calc(100vw - 48px);
+    transform: translate(0, 7px) scale(0.97) !important;
+  }
+
+  .identity-risk-hero .score-node:nth-child(even) .score-node-tip {
+    right: 0 !important;
+    left: auto !important;
+  }
+
+  .identity-risk-hero .score-node .score-node-tip.score-tip-place-below {
+    transform: translate(0, -7px) scale(0.97) !important;
+  }
+
+  .identity-risk-hero .score-node.is-active .score-node-tip {
+    transform: translate(0, 0) scale(1) !important;
+  }
+
+  .identity-risk-hero .score-node:nth-child(odd) .score-node-tip::before {
+    right: auto !important;
+    left: 20px !important;
+  }
+
+  .identity-risk-hero .score-node:nth-child(even) .score-node-tip::before {
+    right: 20px !important;
+    left: auto !important;
   }
 }
