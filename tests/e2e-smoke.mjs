@@ -3022,6 +3022,30 @@ const scenarios = [
       ok("no page errors", errors.length === 0, errors.join(" | ").slice(0, 200));
       const insights = await page.locator("#score-insights").innerText();
       ok("hosting exit flagged", insights.includes("机房 / VPN 出口"), insights.replace(/\s+/g, " ").slice(0, 60));
+      await page.setViewportSize({ width: 390, height: 664 });
+      const singleRiskCenterAudit = await page.evaluate(() => {
+        const strip = document.querySelector(".score-risk-strip").getBoundingClientRect();
+        const chips = Array.from(document.querySelectorAll("#score-insights .score-risk-chip")).filter(
+          (chip) => chip.getClientRects().length,
+        );
+        const chip = chips[0]?.getBoundingClientRect();
+        return {
+          count: chips.length,
+          centerDelta: chip ? Math.abs((chip.left + chip.right - strip.left - strip.right) / 2) : -1,
+          inside:
+            Boolean(chip) &&
+            chip.left >= strip.left - 1 &&
+            chip.right <= strip.right + 1 &&
+            chip.width <= strip.width + 1,
+        };
+      });
+      ok(
+        "a single mobile risk chip is centered without clipping",
+        singleRiskCenterAudit.count === 1 &&
+          singleRiskCenterAudit.centerDelta <= 1.5 &&
+          singleRiskCenterAudit.inside,
+        JSON.stringify(singleRiskCenterAudit),
+      );
       const nodes = await scoreNodeSnapshot(page);
       ok("six score nodes rendered", nodes.length === 6, JSON.stringify(nodes));
       ok(
@@ -3428,62 +3452,55 @@ const scenarios = [
       );
       await page.evaluate(() => document.querySelector("#sec-conn")?.scrollIntoView());
       await page.waitForFunction(() => document.querySelector(".nav-item.is-active")?.dataset.nav === "sec-conn");
-      await page.locator("#mobile-nav-toggle").click();
-      await page.waitForFunction(
-        () =>
-          document.querySelector("#mobile-nav-toggle")?.getAttribute("aria-expanded") === "true" &&
-          getComputedStyle(document.querySelector(".anchor-nav")).display !== "none",
-      );
-      const mobileMenuAudit = await page.evaluate(() => {
-        const menu = document.querySelector(".anchor-nav").getBoundingClientRect();
-        const items = Array.from(document.querySelectorAll(".anchor-nav .nav-item")).map((item) =>
-          item.getBoundingClientRect(),
-        );
+      await page.waitForTimeout(100);
+      const mobileNavigationAudit = await page.evaluate(() => {
+        const nav = document.querySelector(".anchor-nav");
+        const scroll = document.querySelector("#nav-list");
+        const items = Array.from(scroll.querySelectorAll(".nav-item"));
+        const itemRects = items.map((item) => item.getBoundingClientRect());
+        const activeRect = scroll.querySelector(".nav-item.is-active").getBoundingClientRect();
+        const scrollRect = scroll.getBoundingClientRect();
         return {
-          menuInsideViewport: menu.left >= 0 && menu.right <= innerWidth && menu.top >= 0 && menu.bottom <= innerHeight,
-          itemCount: items.length,
-          minItemHeight: Math.min(...items.map((rect) => rect.height)),
-          expanded: document.querySelector("#mobile-nav-toggle").getAttribute("aria-expanded"),
+          displayed: getComputedStyle(nav).display !== "none",
+          itemCount: itemRects.length,
+          rowCount: new Set(itemRects.map((rect) => Math.round(rect.top))).size,
+          minItemHeight: Math.min(...itemRects.map((rect) => rect.height)),
+          horizontallyScrollable: scroll.scrollWidth > scroll.clientWidth,
+          activeVisible: activeRect.left >= scrollRect.left - 1 && activeRect.right <= scrollRect.right + 1,
+          pageOverflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
+          hasCollapsedToggle: Boolean(document.querySelector("#mobile-nav-toggle")),
         };
       });
       ok(
-        "mobile section navigation opens as an in-viewport menu with accessible targets",
-        mobileMenuAudit.menuInsideViewport &&
-          mobileMenuAudit.itemCount === 10 &&
-          mobileMenuAudit.minItemHeight >= 44 &&
-          mobileMenuAudit.expanded === "true",
-        JSON.stringify(mobileMenuAudit),
-      );
-      const mobileMenuNameAudit = await page.evaluate(() => ({
-        visibleLabel: document.querySelector("#mobile-nav-label")?.textContent.trim() || "",
-        accessibleName: document.querySelector("#mobile-nav-toggle")?.getAttribute("aria-label") || "",
-      }));
-      ok(
-        "mobile navigation accessible name contains its visible current-section label",
-        Boolean(mobileMenuNameAudit.visibleLabel) &&
-          mobileMenuNameAudit.accessibleName.includes(mobileMenuNameAudit.visibleLabel),
-        JSON.stringify(mobileMenuNameAudit),
+        "mobile lists all ten sections in one directly visible horizontal navigation row",
+        mobileNavigationAudit.displayed &&
+          mobileNavigationAudit.itemCount === 10 &&
+          mobileNavigationAudit.rowCount === 1 &&
+          mobileNavigationAudit.minItemHeight >= 44 &&
+          mobileNavigationAudit.horizontallyScrollable &&
+          mobileNavigationAudit.activeVisible &&
+          mobileNavigationAudit.pageOverflow === 0 &&
+          !mobileNavigationAudit.hasCollapsedToggle,
+        JSON.stringify(mobileNavigationAudit),
       );
       await page.locator('.nav-item[data-nav="identity-result-root"]').focus();
       await page.keyboard.press("Enter");
       await page.waitForFunction(
-        () =>
-          document.querySelector(".nav-item.is-active")?.dataset.nav === "identity-result-root" &&
-          document.querySelector("#mobile-nav-toggle")?.getAttribute("aria-expanded") === "false",
+        () => document.querySelector(".nav-item.is-active")?.dataset.nav === "identity-result-root",
       );
       const mobileAnchorAudit = await page.evaluate(() => ({
         headerBottom: document.querySelector(".topbar").getBoundingClientRect().bottom,
         heroTop: document.querySelector("#sec-score").getBoundingClientRect().top,
-        focusedId: document.activeElement?.id || "",
+        focusedNav: document.activeElement?.dataset.nav || "",
         current: document.querySelector(".nav-item.is-active")?.getAttribute("aria-current"),
-        menuHidden: getComputedStyle(document.querySelector(".anchor-nav")).display === "none",
+        navVisible: getComputedStyle(document.querySelector(".anchor-nav")).display !== "none",
       }));
       ok(
-        "mobile network-risk navigation clears the sticky header, closes the menu and restores trigger focus",
+        "mobile network-risk navigation clears the complete sticky header and keeps the selected link focused",
         mobileAnchorAudit.heroTop >= mobileAnchorAudit.headerBottom + 4 &&
-          mobileAnchorAudit.focusedId === "mobile-nav-toggle" &&
+          mobileAnchorAudit.focusedNav === "identity-result-root" &&
           mobileAnchorAudit.current === "location" &&
-          mobileAnchorAudit.menuHidden,
+          mobileAnchorAudit.navVisible,
         JSON.stringify(mobileAnchorAudit),
       );
       await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
@@ -3529,40 +3546,49 @@ const scenarios = [
         JSON.stringify(shortLandscapeAudit),
       );
 
-      await page.locator("#mobile-nav-toggle").click();
-      await page.waitForFunction(
-        () => document.querySelector("#mobile-nav-toggle")?.getAttribute("aria-expanded") === "true",
-      );
-      const landscapeMenuAudit = await page.evaluate(() => {
-        const menu = document.querySelector(".anchor-nav").getBoundingClientRect();
-        const items = Array.from(document.querySelectorAll(".anchor-nav .nav-item"));
-        const itemRects = items.map((item) => item.getBoundingClientRect());
-        const dockStyle = getComputedStyle(document.querySelector("#floating-actions"));
+      await page.waitForFunction(() => {
+        const scroll = document.querySelector("#nav-list");
+        const active = scroll?.querySelector(".nav-item.is-active")?.getBoundingClientRect();
+        const viewport = scroll?.getBoundingClientRect();
+        return Boolean(active && viewport && active.left >= viewport.left - 1 && active.right <= viewport.right + 1);
+      });
+      const landscapeNavigationAudit = await page.evaluate(() => {
+        const navElement = document.querySelector(".anchor-nav");
+        const nav = navElement.getBoundingClientRect();
+        const scroll = document.querySelector("#nav-list");
+        const itemRects = Array.from(scroll.querySelectorAll(".nav-item"), (item) => item.getBoundingClientRect());
+        const active = scroll.querySelector(".nav-item.is-active").getBoundingClientRect();
+        const scrollRect = scroll.getBoundingClientRect();
+        const dock = document.querySelector("#floating-actions").getBoundingClientRect();
+        const intersects = (a, b) =>
+          !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
         return {
-          menu: { left: menu.left, right: menu.right, top: menu.top, bottom: menu.bottom },
-          itemCount: items.length,
-          itemsInsideViewport: itemRects.every(
-            (rect) => rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
-          ),
+          nav: { left: nav.left, right: nav.right, top: nav.top, bottom: nav.bottom },
+          itemCount: itemRects.length,
+          rowCount: new Set(itemRects.map((rect) => Math.round(rect.top))).size,
           minItemHeight: Math.min(...itemRects.map((rect) => rect.height)),
-          dockHidden: dockStyle.visibility === "hidden" && dockStyle.pointerEvents === "none",
+          horizontallyScrollable: scroll.scrollWidth > scroll.clientWidth,
+          activeVisible: active.left >= scrollRect.left - 1 && active.right <= scrollRect.right + 1,
+          activeClearOfFade: navElement.classList.contains("is-scroll-end") || active.right <= scrollRect.right - 23,
+          dockOverlap: intersects(nav, dock),
+          pageOverflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
         };
       });
       ok(
-        "short landscape menu stays above the hidden dock and keeps all ten targets usable",
-        landscapeMenuAudit.menu.left >= 0 &&
-          landscapeMenuAudit.menu.right <= 568 &&
-          landscapeMenuAudit.menu.top >= 0 &&
-          landscapeMenuAudit.menu.bottom <= 320 &&
-          landscapeMenuAudit.itemCount === 10 &&
-          landscapeMenuAudit.itemsInsideViewport &&
-          landscapeMenuAudit.minItemHeight >= 44 &&
-          landscapeMenuAudit.dockHidden,
-        JSON.stringify(landscapeMenuAudit),
-      );
-      await page.keyboard.press("Escape");
-      await page.waitForFunction(
-        () => document.querySelector("#mobile-nav-toggle")?.getAttribute("aria-expanded") === "false",
+        "short landscape keeps all ten sections in a direct horizontal row above the document-flow toolbar",
+        landscapeNavigationAudit.nav.left >= 0 &&
+          landscapeNavigationAudit.nav.right <= 568 &&
+          landscapeNavigationAudit.nav.top >= 0 &&
+          landscapeNavigationAudit.nav.bottom <= 320 &&
+          landscapeNavigationAudit.itemCount === 10 &&
+          landscapeNavigationAudit.rowCount === 1 &&
+          landscapeNavigationAudit.minItemHeight >= 44 &&
+          landscapeNavigationAudit.horizontallyScrollable &&
+          landscapeNavigationAudit.activeVisible &&
+          landscapeNavigationAudit.activeClearOfFade &&
+          !landscapeNavigationAudit.dockOverlap &&
+          landscapeNavigationAudit.pageOverflow === 0,
+        JSON.stringify(landscapeNavigationAudit),
       );
 
       await page.setViewportSize({ width: 320, height: 568 });
@@ -5383,7 +5409,11 @@ const scenarios = [
             const dock = document.querySelector("#floating-actions").getBoundingClientRect();
             const topbar = document.querySelector(".topbar").getBoundingClientRect();
             const anchorNav = document.querySelector(".anchor-nav");
-            const mobileNavToggle = document.querySelector("#mobile-nav-toggle").getBoundingClientRect();
+            const navScroll = document.querySelector("#nav-list");
+            const navItems = Array.from(navScroll.querySelectorAll(".nav-item"));
+            const navItemRects = navItems.map((item) => item.getBoundingClientRect());
+            const navViewport = navScroll.getBoundingClientRect();
+            const activeNav = navScroll.querySelector(".nav-item.is-active")?.getBoundingClientRect();
             const reselect = document.querySelector("#network-risk-reselect").getBoundingClientRect();
             const dockActions = Array.from(document.querySelectorAll("#floating-actions .floating-action")).map(
               (action) => action.getBoundingClientRect(),
@@ -5395,23 +5425,54 @@ const scenarios = [
             const allRiskChips = Array.from(document.querySelectorAll("#score-insights .score-risk-chip"));
             const chipSeverity = (chip) =>
               chip.classList.contains("score-risk-chip-red") ? "red" : "amber";
+            const riskStrip = document.querySelector(".score-risk-strip").getBoundingClientRect();
+            const riskRows = new Map();
+            visibleChips.forEach((chip) => {
+              const rect = chip.getBoundingClientRect();
+              const row = Math.round(rect.top);
+              const current = riskRows.get(row) || [];
+              current.push(rect);
+              riskRows.set(row, current);
+            });
+            const stripCenter = (riskStrip.left + riskStrip.right) / 2;
+            const riskRowCenterDeltas = Array.from(riskRows.values(), (rects) => {
+              const left = Math.min(...rects.map((rect) => rect.left));
+              const right = Math.max(...rects.map((rect) => rect.right));
+              return Math.abs((left + right) / 2 - stripCenter);
+            });
             return {
               viewport: { width: innerWidth, height: innerHeight },
               topbarHeight: Math.round(topbar.height),
-              anchorNavHidden: getComputedStyle(anchorNav).display === "none",
-              mobileNavToggleSize: [Math.round(mobileNavToggle.width), Math.round(mobileNavToggle.height)],
+              anchorNavVisible: getComputedStyle(anchorNav).display !== "none",
+              navItemCount: navItems.length,
+              navRowCount: new Set(navItemRects.map((rect) => Math.round(rect.top))).size,
+              navMinTargetHeight: Math.min(...navItemRects.map((rect) => rect.height)),
+              navHorizontallyScrollable: navScroll.scrollWidth > navScroll.clientWidth,
+              activeNavVisible:
+                Boolean(activeNav) &&
+                activeNav.left >= navViewport.left - 1 &&
+                activeNav.right <= navViewport.right + 1,
+              activeNavClearOfFade:
+                Boolean(activeNav) &&
+                (anchorNav.classList.contains("is-scroll-end") || activeNav.right <= navViewport.right - 23),
               reselectSize: [Math.round(reselect.width), Math.round(reselect.height)],
               nodeCount: nodeButtons.length,
               allRiskChipCount: allRiskChips.length,
               allRiskChipSeverities: allRiskChips.map(chipSeverity),
               visibleRiskChipCount: visibleChips.length,
               visibleRiskChipSeverities: visibleChips.map(chipSeverity),
+              riskRowCenterDeltas,
+              riskChipsWithinStrip: visibleChips.every((chip) => {
+                const rect = chip.getBoundingClientRect();
+                return rect.left >= riskStrip.left - 1 && rect.right <= riskStrip.right + 1 && rect.width <= riskStrip.width + 1;
+              }),
               keyBottom: Math.round(Math.max(...keyRects.map((rect) => rect.bottom))),
               dockTop: Math.round(dock.top),
               dockInsideViewport:
                 dock.left >= 0 && dock.right <= innerWidth && dock.top >= 0 && dock.bottom <= innerHeight,
               keyIntersections: keyRects.filter((rect) => intersects(rect, dock)).length,
               supplementalIntersections: supplementalActions.filter((rect) => intersects(rect, dock)).length,
+              supplementalGap: dock.top - Math.max(...supplementalActions.map((rect) => rect.bottom)),
               nodesInsideViewport: [...nodeRects, ...labelRects].every(
                 (rect) => rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
               ),
@@ -5430,16 +5491,24 @@ const scenarios = [
         "390x664 and 430x740 keep the conclusion, score and six signals above the floating dock",
         resultAudits.every(
           (audit) =>
-            audit.topbarHeight <= 46 &&
-            audit.anchorNavHidden &&
-            audit.mobileNavToggleSize[0] >= 44 &&
-            audit.mobileNavToggleSize[1] >= 44 &&
+            audit.topbarHeight >= 84 &&
+            audit.topbarHeight <= 96 &&
+            audit.anchorNavVisible &&
+            audit.navItemCount === 10 &&
+            audit.navRowCount === 1 &&
+            audit.navMinTargetHeight >= 44 &&
+            audit.navHorizontallyScrollable &&
+            audit.activeNavVisible &&
+            audit.activeNavClearOfFade &&
             audit.reselectSize[0] >= 44 &&
             audit.reselectSize[1] >= 44 &&
             audit.nodeCount === 6 &&
             audit.allRiskChipCount >= 3 &&
             audit.visibleRiskChipCount === 2 &&
             audit.visibleRiskChipSeverities.join(",") === audit.allRiskChipSeverities.slice(0, 2).join(",") &&
+            audit.riskRowCenterDeltas.length >= 1 &&
+            audit.riskRowCenterDeltas.every((delta) => delta <= 1.5) &&
+            audit.riskChipsWithinStrip &&
             audit.allRiskChipSeverities.every(
               (severity, index, severities) =>
                 index === 0 || severity !== "red" || severities[index - 1] === "red",
@@ -5448,6 +5517,7 @@ const scenarios = [
             audit.dockInsideViewport &&
             audit.keyIntersections === 0 &&
             audit.supplementalIntersections === 0 &&
+            audit.supplementalGap >= 8 &&
             audit.nodesInsideViewport &&
             audit.nodeTouchTargets.every(([width, height]) => width >= 44 && height >= 44) &&
             audit.dockTouchTargets.every(([width, height]) => width >= 44 && height >= 44) &&
@@ -5497,6 +5567,17 @@ const scenarios = [
           document.querySelectorAll(".score-controls, .score-links, .score-links .underlink"),
           (element) => element.getBoundingClientRect(),
         );
+        const visibleChips = Array.from(document.querySelectorAll("#score-insights .score-risk-chip")).filter(
+          (chip) => chip.getClientRects().length,
+        );
+        const strip = document.querySelector(".score-risk-strip").getBoundingClientRect();
+        const rows = new Map();
+        visibleChips.forEach((chip) => {
+          const rect = chip.getBoundingClientRect();
+          const row = Math.round(rect.top);
+          rows.set(row, [...(rows.get(row) || []), rect]);
+        });
+        const stripCenter = (strip.left + strip.right) / 2;
         return {
           nodeCount: nodes.length,
           columnCount: new Set(rects.map((rect) => Math.round(rect.left))).size,
@@ -5506,9 +5587,16 @@ const scenarios = [
             Math.min(...rects.map((rect) => rect.height)),
           ],
           nodesInsideViewport: rects.every((rect) => rect.left >= 0 && rect.right <= innerWidth),
-          visibleRiskChipCount: Array.from(
-            document.querySelectorAll("#score-insights .score-risk-chip"),
-          ).filter((chip) => chip.getClientRects().length).length,
+          visibleRiskChipCount: visibleChips.length,
+          riskRowCenterDeltas: Array.from(rows.values(), (row) => {
+            const left = Math.min(...row.map((rect) => rect.left));
+            const right = Math.max(...row.map((rect) => rect.right));
+            return Math.abs((left + right) / 2 - stripCenter);
+          }),
+          riskChipsWithinStrip: visibleChips.every((chip) => {
+            const rect = chip.getBoundingClientRect();
+            return rect.left >= strip.left - 1 && rect.right <= strip.right + 1 && rect.width <= strip.width + 1;
+          }),
           dockPosition: getComputedStyle(dock).position,
           dockIntersections: secondaryRects.filter((rect) => intersects(rect, dockRect)).length,
           overflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
@@ -5523,6 +5611,9 @@ const scenarios = [
           narrowAudit.minTarget[1] >= 44 &&
           narrowAudit.nodesInsideViewport &&
           narrowAudit.visibleRiskChipCount === 2 &&
+          narrowAudit.riskRowCenterDeltas.length >= 1 &&
+          narrowAudit.riskRowCenterDeltas.every((delta) => delta <= 1.5) &&
+          narrowAudit.riskChipsWithinStrip &&
           narrowAudit.dockPosition === "static" &&
           narrowAudit.dockIntersections === 0 &&
           narrowAudit.overflow <= 1,
@@ -5533,28 +5624,70 @@ const scenarios = [
       await resultPage.evaluate(() => window.scrollTo(0, 0));
       const resultReflowHeaderAudit = await resultPage.evaluate(() => {
         const brand = document.querySelector(".brand-home").getBoundingClientRect();
-        const toggle = document.querySelector("#mobile-nav-toggle").getBoundingClientRect();
-        const intersects = (a, b) =>
-          !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+        const nav = document.querySelector(".anchor-nav").getBoundingClientRect();
+        const navScroll = document.querySelector("#nav-list");
+        const navItems = Array.from(navScroll.querySelectorAll(".nav-item"));
+        const navItemRects = navItems.map((item) => item.getBoundingClientRect());
+        const navViewport = navScroll.getBoundingClientRect();
+        const activeNav = navScroll.querySelector(".nav-item.is-active")?.getBoundingClientRect();
+        const visibleChips = Array.from(document.querySelectorAll("#score-insights .score-risk-chip")).filter(
+          (chip) => chip.getClientRects().length,
+        );
+        const strip = document.querySelector(".score-risk-strip").getBoundingClientRect();
+        const rows = new Map();
+        visibleChips.forEach((chip) => {
+          const rect = chip.getBoundingClientRect();
+          const row = Math.round(rect.top);
+          rows.set(row, [...(rows.get(row) || []), rect]);
+        });
+        const stripCenter = (strip.left + strip.right) / 2;
         return {
           brand: { left: brand.left, right: brand.right, width: brand.width, height: brand.height },
-          toggle: { left: toggle.left, right: toggle.right, width: toggle.width, height: toggle.height },
-          overlap: intersects(brand, toggle),
-          accessibleName: document.querySelector("#mobile-nav-toggle").getAttribute("aria-label"),
-          visibleLabel: document.querySelector("#mobile-nav-label").textContent.trim(),
+          nav: { left: nav.left, right: nav.right, top: nav.top, height: nav.height },
+          brandBeforeNav: brand.bottom <= nav.top + 1,
+          navItemCount: navItems.length,
+          navRowCount: new Set(navItemRects.map((rect) => Math.round(rect.top))).size,
+          navMinTargetHeight: Math.min(...navItemRects.map((rect) => rect.height)),
+          navHorizontallyScrollable: navScroll.scrollWidth > navScroll.clientWidth,
+          activeNavVisible:
+            Boolean(activeNav) &&
+            activeNav.left >= navViewport.left - 1 &&
+            activeNav.right <= navViewport.right + 1,
+          hasCollapsedToggle: Boolean(document.querySelector("#mobile-nav-toggle")),
+          riskRowCenterDeltas: Array.from(rows.values(), (row) => {
+            const left = Math.min(...row.map((rect) => rect.left));
+            const right = Math.max(...row.map((rect) => rect.right));
+            return Math.abs((left + right) / 2 - stripCenter);
+          }),
+          riskChipsWithinStrip: visibleChips.every((chip) => {
+            const rect = chip.getBoundingClientRect();
+            return rect.left >= strip.left - 1 && rect.right <= strip.right + 1 && rect.width <= strip.width + 1;
+          }),
+          topbarBottom: document.querySelector(".topbar").getBoundingClientRect().bottom,
+          heroTop: document.querySelector("#sec-score").getBoundingClientRect().top,
+          pageOverflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
         };
       });
       ok(
-        "200% equivalent result reflow keeps the compact brand and named navigation control separate",
-        !resultReflowHeaderAudit.overlap &&
+        "200% equivalent result reflow keeps the compact brand above a centered direct navigation row",
+        resultReflowHeaderAudit.brandBeforeNav &&
           resultReflowHeaderAudit.brand.left >= 0 &&
           resultReflowHeaderAudit.brand.right <= 195 &&
           resultReflowHeaderAudit.brand.height >= 44 &&
-          resultReflowHeaderAudit.toggle.left >= 0 &&
-          resultReflowHeaderAudit.toggle.right <= 195 &&
-          resultReflowHeaderAudit.toggle.width >= 44 &&
-          resultReflowHeaderAudit.toggle.height >= 44 &&
-          resultReflowHeaderAudit.accessibleName.includes(resultReflowHeaderAudit.visibleLabel),
+          resultReflowHeaderAudit.nav.left >= 0 &&
+          resultReflowHeaderAudit.nav.right <= 195 &&
+          resultReflowHeaderAudit.nav.height >= 44 &&
+          resultReflowHeaderAudit.navItemCount === 10 &&
+          resultReflowHeaderAudit.navRowCount === 1 &&
+          resultReflowHeaderAudit.navMinTargetHeight >= 44 &&
+          resultReflowHeaderAudit.navHorizontallyScrollable &&
+          resultReflowHeaderAudit.activeNavVisible &&
+          !resultReflowHeaderAudit.hasCollapsedToggle &&
+          resultReflowHeaderAudit.riskRowCenterDeltas.length >= 1 &&
+          resultReflowHeaderAudit.riskRowCenterDeltas.every((delta) => delta <= 1.5) &&
+          resultReflowHeaderAudit.riskChipsWithinStrip &&
+          resultReflowHeaderAudit.heroTop >= resultReflowHeaderAudit.topbarBottom + 4 &&
+          resultReflowHeaderAudit.pageOverflow <= 1,
         JSON.stringify(resultReflowHeaderAudit),
       );
       await resultPage.locator("#floating-actions").scrollIntoViewIfNeeded();
