@@ -433,6 +433,19 @@ async function routeFixtures(target, baseOrigin, opts = {}) {
       return json({ status: { indicator: "none" } });
     }
     if (host === "api.github.com") {
+      if (opts.failGithubStars) {
+        return route
+          .fulfill({
+            status: 503,
+            headers: { "access-control-allow-origin": "*" },
+            contentType: "application/json",
+            body: JSON.stringify({ message: "unavailable" }),
+          })
+          .catch(() => {});
+      }
+      if (opts.invalidGithubStars) {
+        return json({ stargazers_count: null });
+      }
       return json({ stargazers_count: 42 });
     }
     // 其余外部请求（favicon 探针、generate_204、GA 等）统一返回 204
@@ -673,8 +686,8 @@ const scenarios = [
         nodes.map((node) => node.id),
       );
       ok(
-        "root homepage uses the same five-action toolbar contract",
-        rootActions.join(",") === "run-all,copy-ai-report,copy-summary,privacy-toggle,floating-top",
+        "root homepage keeps five primary tools and restores the GitHub Star repository entry",
+        rootActions.join(",") === "run-all,copy-ai-report,copy-summary,privacy-toggle,github-shortcut,floating-top",
         rootActions.join(","),
       );
       await rootPage.close();
@@ -2704,7 +2717,239 @@ const scenarios = [
     },
   },
   {
-    name: "分享与隐私：五项浮动动作、AI 报告始终脱敏、已复制两秒恢复",
+    name: "GitHub Star：右下角恢复实时数量并保留失败回退入口",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      const requests = [];
+      page.on("request", (request) => requests.push(request.url()));
+      await routeFixtures(page, base.origin, { autoStart: false });
+      await page.goto(base.href);
+      await page.waitForFunction(
+        () => document.querySelector("#github-shortcut")?.dataset.starState === "loaded",
+        null,
+        { timeout: 5000 },
+      );
+      const loaded = await page.locator("#github-shortcut").evaluate((action) => ({
+        href: action.getAttribute("href"),
+        target: action.getAttribute("target"),
+        rel: action.getAttribute("rel"),
+        state: action.dataset.starState,
+        count: action.querySelector("#star-count")?.textContent.trim(),
+        label: action.querySelector(".floating-action-label")?.textContent.replace(/\s+/g, " ").trim(),
+        aria: action.getAttribute("aria-label"),
+        title: action.getAttribute("title"),
+      }));
+      ok(
+        "GitHub action renders the fixture Star count with a complete accessible repository label",
+        loaded.href === "https://github.com/betaer/AiSignalGuard" &&
+          loaded.target === "_blank" &&
+          loaded.rel?.includes("noopener") &&
+          loaded.rel?.includes("noreferrer") &&
+          loaded.state === "loaded" &&
+          loaded.count === "42" &&
+          loaded.label === "GitHub · 42" &&
+          loaded.aria === "打开 GitHub 仓库，42 个 Star" &&
+          loaded.title === loaded.aria,
+        JSON.stringify(loaded),
+      );
+      ok(
+        "GitHub metadata is requested exactly once",
+        requests.filter((url) => url.startsWith("https://api.github.com/repos/betaer/AiSignalGuard")).length === 1,
+        requests.filter((url) => url.includes("api.github.com")).join(","),
+      );
+      await page.close();
+
+      const failurePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await routeFixtures(failurePage, base.origin, { autoStart: false, failGithubStars: true });
+      await failurePage.goto(base.href);
+      await failurePage.waitForFunction(
+        () => document.querySelector("#github-shortcut")?.dataset.starState === "fallback",
+        null,
+        { timeout: 5000 },
+      );
+      const fallback = await failurePage.locator("#github-shortcut").evaluate((action) => ({
+        href: action.getAttribute("href"),
+        state: action.dataset.starState,
+        count: action.querySelector("#star-count")?.textContent.trim(),
+        aria: action.getAttribute("aria-label"),
+        title: action.getAttribute("title"),
+      }));
+      ok(
+        "GitHub API failure keeps a truthful non-numeric Star entry instead of hiding the repository link",
+        fallback.href === "https://github.com/betaer/AiSignalGuard" &&
+          fallback.state === "fallback" &&
+          fallback.count === "Star" &&
+          fallback.aria === "打开 GitHub 仓库" &&
+          fallback.title === fallback.aria,
+        JSON.stringify(fallback),
+      );
+      await failurePage.close();
+
+      const invalidPage = await browser.newPage({ viewport: { width: 390, height: 664 } });
+      await routeFixtures(invalidPage, base.origin, { autoStart: false, invalidGithubStars: true });
+      await invalidPage.goto(base.href);
+      await invalidPage.waitForFunction(
+        () => document.querySelector("#github-shortcut")?.dataset.starState === "fallback",
+        null,
+        { timeout: 5000 },
+      );
+      const invalid = await invalidPage.locator("#github-shortcut").evaluate((action) => ({
+        count: action.querySelector("#star-count")?.textContent.trim(),
+        aria: action.getAttribute("aria-label"),
+      }));
+      ok(
+        "invalid GitHub metadata is rejected instead of being coerced to a fake zero",
+        invalid.count === "Star" && invalid.aria === "打开 GitHub 仓库",
+        JSON.stringify(invalid),
+      );
+      await invalidPage.close();
+
+      const cachedPage = await browser.newPage({ viewport: { width: 390, height: 664 } });
+      const cachedRequests = [];
+      cachedPage.on("request", (request) => cachedRequests.push(request.url()));
+      await cachedPage.addInitScript(() => {
+        window.localStorage.setItem(
+          "aisg-github-stars",
+          JSON.stringify({ count: 17, savedAt: Date.now() }),
+        );
+      });
+      await routeFixtures(cachedPage, base.origin, { autoStart: false });
+      await cachedPage.goto(base.href);
+      await cachedPage.waitForFunction(
+        () => document.querySelector("#github-shortcut")?.dataset.starState === "cached",
+        null,
+        { timeout: 5000 },
+      );
+      const cached = await cachedPage.locator("#github-shortcut").evaluate((action) => ({
+        count: action.querySelector("#star-count")?.textContent.trim(),
+        aria: action.getAttribute("aria-label"),
+      }));
+      ok(
+        "a fresh short-lived cache renders immediately without consuming another anonymous GitHub request",
+        cached.count === "17" &&
+          cached.aria === "打开 GitHub 仓库，17 个 Star" &&
+          !cachedRequests.some((url) => url.startsWith("https://api.github.com/repos/")),
+        JSON.stringify({ cached, githubRequests: cachedRequests.filter((url) => url.includes("api.github.com")) }),
+      );
+      await cachedPage.close();
+
+      for (const cacheCase of [
+        { label: "expired", savedAtOffset: -(31 * 60 * 1000) },
+        { label: "future", savedAtOffset: 60 * 1000 },
+      ]) {
+        const stalePage = await browser.newPage({ viewport: { width: 390, height: 664 } });
+        const staleRequests = [];
+        stalePage.on("request", (request) => staleRequests.push(request.url()));
+        await stalePage.addInitScript((offset) => {
+          window.localStorage.setItem(
+            "aisg-github-stars",
+            JSON.stringify({ count: 999, savedAt: Date.now() + offset }),
+          );
+        }, cacheCase.savedAtOffset);
+        await routeFixtures(stalePage, base.origin, { autoStart: false, failGithubStars: true });
+        await stalePage.goto(base.href);
+        await stalePage.waitForFunction(
+          () => document.querySelector("#github-shortcut")?.dataset.starState === "fallback",
+          null,
+          { timeout: 5000 },
+        );
+        const stale = await stalePage.locator("#github-shortcut").evaluate((action) => ({
+          count: action.querySelector("#star-count")?.textContent.trim(),
+          aria: action.getAttribute("aria-label"),
+          cache: window.localStorage.getItem("aisg-github-stars"),
+        }));
+        ok(
+          `${cacheCase.label} cache timestamps are discarded before a failed refresh`,
+          stale.count === "Star" &&
+            stale.aria === "打开 GitHub 仓库" &&
+            stale.cache === null &&
+            staleRequests.filter((url) => url.startsWith("https://api.github.com/repos/betaer/AiSignalGuard"))
+              .length === 1,
+          JSON.stringify({ stale, githubRequests: staleRequests.filter((url) => url.includes("api.github.com")) }),
+        );
+        await stalePage.close();
+      }
+
+      const layoutPage = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+      await routeFixtures(layoutPage, base.origin);
+      await layoutPage.goto(base.href);
+      await waitForScore(layoutPage);
+      const layoutAudits = [];
+      for (const viewport of [
+        { width: 1500, height: 900 },
+        { width: 1440, height: 900 },
+        { width: 1280, height: 900 },
+        { width: 721, height: 900 },
+        { width: 393, height: 852 },
+        { width: 340, height: 700 },
+        { width: 320, height: 568 },
+        { width: 300, height: 700 },
+        { width: 292, height: 700 },
+        { width: 291, height: 700 },
+        { width: 260, height: 600 },
+        { width: 195, height: 332 },
+        { width: 568, height: 320 },
+        { width: 721, height: 400 },
+        { width: 1280, height: 320 },
+      ]) {
+        await layoutPage.setViewportSize(viewport);
+        await layoutPage.locator("#floating-actions").scrollIntoViewIfNeeded();
+        layoutAudits.push(
+          await layoutPage.locator("#floating-actions").evaluate((dock, measuredViewport) => {
+            const actions = Array.from(dock.querySelectorAll(".floating-action"));
+            const github = dock.querySelector("#github-shortcut");
+            const badge = github.querySelector(".floating-github-label");
+            const badgeRect = badge.getBoundingClientRect();
+            const dockStyle = getComputedStyle(dock);
+            const compact = getComputedStyle(badge).position === "absolute";
+            const intersects = (a, b) =>
+              !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+            const siblingOverlap = actions
+              .filter((action) => action !== github)
+              .some((action) => intersects(badgeRect, action.getBoundingClientRect()));
+            const actionRects = actions.map((action) => action.getBoundingClientRect());
+            const footer = document.querySelector(".site-footer").getBoundingClientRect();
+            return {
+              viewport: measuredViewport,
+              compact,
+              position: dockStyle.position,
+              actionCount: actions.length,
+              minActionWidth: Math.min(...actionRects.map((rect) => rect.width)),
+              minActionHeight: Math.min(...actionRects.map((rect) => rect.height)),
+              actionsInsideViewport: actionRects.every(
+                (rect) =>
+                  rect.left >= 0 &&
+                  rect.right <= innerWidth &&
+                  (dockStyle.position !== "fixed" || (rect.top >= 0 && rect.bottom <= innerHeight)),
+              ),
+              siblingOverlap,
+              badgeHorizontalInset: Math.min(badgeRect.left, innerWidth - badgeRect.right),
+              footerGap: dockStyle.position === "static" ? badgeRect.top - footer.bottom : null,
+              overflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
+            };
+          }, viewport),
+        );
+      }
+      ok(
+        "GitHub badge stays clear of neighboring actions, viewport edges and the footer across responsive breakpoints",
+        layoutAudits.every(
+          (audit) =>
+            audit.actionCount === 6 &&
+            audit.minActionWidth >= 44 &&
+            audit.minActionHeight >= 44 &&
+            audit.actionsInsideViewport &&
+            !audit.siblingOverlap &&
+            (!audit.compact || audit.badgeHorizontalInset >= 8) &&
+            (audit.footerGap === null || audit.footerGap >= 8) &&
+            audit.overflow <= 1,
+        ),
+        JSON.stringify(layoutAudits),
+      );
+      await layoutPage.close();
+    },
+  },
+  {
+    name: "分享与隐私：五项主操作加 GitHub Star、AI 报告始终脱敏、已复制两秒恢复",
     async run({ browser, base, ok }) {
       const page = await browser.newPage();
       await captureCopiedSummary(page);
@@ -2716,15 +2961,16 @@ const scenarios = [
         items.map((item) => item.id),
       );
       ok(
-        "keeps exactly the requested five floating actions",
-        actionIds.join(",") === "run-all,copy-ai-report,copy-summary,privacy-toggle,floating-top",
+        "keeps the five requested operations plus the restored GitHub Star entry",
+        actionIds.join(",") === "run-all,copy-ai-report,copy-summary,privacy-toggle,github-shortcut,floating-top",
         actionIds.join(","),
       );
       const topGithubCount = await page.locator('.top-actions .github-link, .top-actions a[href*="github.com/betaer/AiSignalGuard"]').count();
-      ok("GitHub and Star are absent from the top-right area", topGithubCount === 0, `count=${topGithubCount}`);
+      ok("GitHub and Star stay out of the removed top action area", topGithubCount === 0, `count=${topGithubCount}`);
       ok(
-        "standalone ChatGPT, Claude and GitHub shortcuts are absent",
-        (await page.locator("#chatgpt-shortcut, #claude-shortcut, #github-shortcut").count()) === 0,
+        "standalone ChatGPT and Claude shortcuts stay absent while GitHub Star is restored",
+        (await page.locator("#chatgpt-shortcut, #claude-shortcut").count()) === 0 &&
+          (await page.locator("#github-shortcut").count()) === 1,
         actionIds.join(","),
       );
 
@@ -3356,7 +3602,7 @@ const scenarios = [
     },
   },
   {
-    name: "右下快捷栏：五项动作、结构化脱敏报告与无刷新重新测试",
+    name: "右下快捷栏：五项主操作、GitHub Star、结构化脱敏报告与无刷新重新测试",
     async run({ browser, base, ok }) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       const requests = [];
@@ -3424,13 +3670,13 @@ const scenarios = [
         };
       });
       ok(
-        "toolbar order contains the requested five actions",
-        staticAudit.ids.join(",") === "run-all,copy-ai-report,copy-summary,privacy-toggle,floating-top",
+        "toolbar order contains five primary actions and the restored GitHub Star entry",
+        staticAudit.ids.join(",") === "run-all,copy-ai-report,copy-summary,privacy-toggle,github-shortcut,floating-top",
         JSON.stringify(staticAudit.ids),
       );
       ok(
-        "all five actions have icons and accessible names",
-        staticAudit.iconCount === 5 && staticAudit.namedCount === 5,
+        "all six toolbar entries have icons and accessible names",
+        staticAudit.iconCount === 6 && staticAudit.namedCount === 6,
         `icons=${staticAudit.iconCount}, named=${staticAudit.namedCount}`,
       );
       ok(
@@ -3501,10 +3747,11 @@ const scenarios = [
         JSON.stringify({ before: identityHistoryBefore, after: repeatedIdentityHistory }),
       );
       ok("top-right privacy and retest controls are removed", staticAudit.topControls === 0, `count=${staticAudit.topControls}`);
-      ok("GitHub and Star are removed from the top-right area", staticAudit.topGithub === 0, `count=${staticAudit.topGithub}`);
+      ok("GitHub and Star stay out of the removed top action area", staticAudit.topGithub === 0, `count=${staticAudit.topGithub}`);
       ok(
-        "ChatGPT, Claude and GitHub shortcuts are removed from the floating toolbar",
-        (await page.locator("#chatgpt-shortcut, #claude-shortcut, #github-shortcut").count()) === 0,
+        "ChatGPT and Claude shortcuts stay removed while GitHub Star is present in the floating toolbar",
+        (await page.locator("#chatgpt-shortcut, #claude-shortcut").count()) === 0 &&
+          (await page.locator("#github-shortcut").count()) === 1,
         JSON.stringify(staticAudit.ids),
       );
       ok(
@@ -3681,9 +3928,14 @@ const scenarios = [
         return {
           dock: bounds,
           viewport: { width: innerWidth, height: innerHeight },
-          labelsHidden: actions.every((action) => {
+          labelsCompact: actions.every((action) => {
             const label = action.querySelector(".floating-action-label");
-            return label && getComputedStyle(label).display === "none";
+            return (
+              label &&
+              (action.id === "github-shortcut"
+                ? getComputedStyle(label).display !== "none"
+                : getComputedStyle(label).display === "none")
+            );
           }),
           actionCount: actions.length,
           touchTargets: actions.map((action) => {
@@ -3704,9 +3956,9 @@ const scenarios = [
         JSON.stringify(mobileAudit),
       );
       ok(
-        "mobile keeps all five actions in one accessible icon row",
-        mobileAudit.labelsHidden &&
-          mobileAudit.actionCount === 5 &&
+        "mobile keeps five icon-only actions plus the GitHub count badge in one accessible row",
+        mobileAudit.labelsCompact &&
+          mobileAudit.actionCount === 6 &&
           mobileAudit.rowCount === 1 &&
           mobileAudit.touchTargets.every(([width, height]) => width >= 44 && height >= 44),
         JSON.stringify(mobileAudit),
@@ -3800,7 +4052,7 @@ const scenarios = [
           shortLandscapeAudit.dock.right <= shortLandscapeAudit.viewport.width &&
           shortLandscapeAudit.dock.top >= 0 &&
           shortLandscapeAudit.dock.bottom <= shortLandscapeAudit.viewport.height &&
-          shortLandscapeAudit.actionCount === 5 &&
+          shortLandscapeAudit.actionCount === 6 &&
           shortLandscapeAudit.rowCount === 1 &&
           shortLandscapeAudit.position === "static" &&
           shortLandscapeAudit.overflow === 0,
@@ -3876,12 +4128,12 @@ const scenarios = [
         };
       });
       ok(
-        "320px mobile keeps all five actions visible and tappable",
+        "320px mobile keeps all six toolbar entries visible and tappable",
         narrowAudit.dock.left >= 0 &&
           narrowAudit.dock.right <= narrowAudit.viewport.width &&
           narrowAudit.dock.top >= 0 &&
           narrowAudit.dock.bottom <= narrowAudit.viewport.height &&
-          narrowAudit.actionCount === 5 &&
+          narrowAudit.actionCount === 6 &&
           narrowAudit.rowCount === 1 &&
           narrowAudit.position === "static" &&
           narrowAudit.targets.every(([width, height]) => width >= 44 && height >= 44) &&
@@ -3957,7 +4209,7 @@ const scenarios = [
           shortDesktopAudit.dock.right <= shortDesktopAudit.viewport.width &&
           shortDesktopAudit.dock.top >= 0 &&
           shortDesktopAudit.dock.bottom <= shortDesktopAudit.viewport.height &&
-          shortDesktopAudit.actionCount === 5 &&
+          shortDesktopAudit.actionCount === 6 &&
           shortDesktopAudit.rowCount === 1 &&
           shortDesktopAudit.footerGap >= 8 &&
           !shortDesktopAudit.intersectsFooter,
@@ -3995,9 +4247,12 @@ const scenarios = [
             Math.max(...actionRects.map((rect) => rect.left)) - Math.min(...actionRects.map((rect) => rect.left)),
           rowCount: new Set(actionRects.map((rect) => Math.round(rect.top))).size,
           flexDirection: getComputedStyle(document.querySelector("#floating-actions")).flexDirection,
-          labelsHidden: actions.every(
-            (action) => getComputedStyle(action.querySelector(".floating-action-label")).display === "none",
-          ),
+          labelsCompact: actions.every((action) => {
+            const label = action.querySelector(".floating-action-label");
+            return action.id === "github-shortcut"
+              ? getComputedStyle(label).display !== "none"
+              : getComputedStyle(label).display === "none";
+          }),
           footerGap: dock.left - footer.right,
           intersectsFooter,
         };
@@ -4008,11 +4263,11 @@ const scenarios = [
           desktopFooterAudit.dock.right <= desktopFooterAudit.viewport.width &&
           desktopFooterAudit.dock.top >= 0 &&
           desktopFooterAudit.dock.bottom <= desktopFooterAudit.viewport.height &&
-          desktopFooterAudit.actionCount === 5 &&
+          desktopFooterAudit.actionCount === 6 &&
           desktopFooterAudit.columnSpread <= 2 &&
-          desktopFooterAudit.rowCount === 5 &&
+          desktopFooterAudit.rowCount === 6 &&
           desktopFooterAudit.flexDirection === "column" &&
-          desktopFooterAudit.labelsHidden &&
+          desktopFooterAudit.labelsCompact &&
           desktopFooterAudit.footerGap >= 5 &&
           !desktopFooterAudit.intersectsFooter,
         JSON.stringify(desktopFooterAudit),
@@ -4053,7 +4308,7 @@ const scenarios = [
         "1200px desktop keeps the vertical toolbar outside visible identity cards",
         desktopContentAudit.cardCount > 0 &&
           desktopContentAudit.columnSpread <= 2 &&
-          desktopContentAudit.rowCount === 5 &&
+          desktopContentAudit.rowCount === 6 &&
           desktopContentAudit.flexDirection === "column" &&
           desktopContentAudit.dock.left - desktopContentAudit.shellRight >= 5 &&
           desktopContentAudit.dock.left >= desktopContentAudit.cardRight &&
@@ -4088,7 +4343,7 @@ const scenarios = [
         "721px breakpoint reserves a right-side channel for the vertical toolbar",
         tabletAudit.flexDirection === "column" &&
           tabletAudit.columnSpread <= 2 &&
-          tabletAudit.rowCount === 5 &&
+          tabletAudit.rowCount === 6 &&
           tabletAudit.dock.left - tabletAudit.shellRight >= 5 &&
           tabletAudit.dock.right <= tabletAudit.viewport.width &&
           tabletAudit.dock.top >= 0 &&
@@ -5761,9 +6016,9 @@ const scenarios = [
         })),
       );
       ok(
-        "floating toolbar contains exactly the five requested actions in order",
+        "floating toolbar contains five requested operations plus GitHub Star in order",
         toolbar.map((action) => action.id).join(",") ===
-          "run-all,copy-ai-report,copy-summary,privacy-toggle,floating-top",
+          "run-all,copy-ai-report,copy-summary,privacy-toggle,github-shortcut,floating-top",
         JSON.stringify(toolbar),
       );
       const aiCopyAction = toolbar.find((action) => action.id === "copy-ai-report");
@@ -5775,9 +6030,10 @@ const scenarios = [
         JSON.stringify(aiCopyAction),
       );
       ok(
-        "removed toolbar shortcuts do not trigger a GitHub metadata request",
-        (await page.locator("#chatgpt-shortcut, #claude-shortcut, #github-shortcut").count()) === 0 &&
-          !requests.some((url) => url.startsWith("https://api.github.com/repos/")),
+        "removed AI shortcuts stay absent and the restored Star metadata is requested once",
+        (await page.locator("#chatgpt-shortcut, #claude-shortcut").count()) === 0 &&
+          (await page.locator("#github-shortcut").count()) === 1 &&
+          requests.filter((url) => url.startsWith("https://api.github.com/repos/betaer/AiSignalGuard")).length === 1,
         requests.filter((url) => url.includes("github.com")).join(","),
       );
 
@@ -6483,11 +6739,11 @@ const scenarios = [
         };
       });
       ok(
-        "200% equivalent result reflow moves the five-action dock into a non-overlapping two-row flow",
+        "200% equivalent result reflow moves the six-entry dock into a non-overlapping two-row flow",
         resultReflowDockAudit.position === "static" &&
           resultReflowDockAudit.dock.left >= 0 &&
           resultReflowDockAudit.dock.right <= 195 &&
-          resultReflowDockAudit.actionCount === 5 &&
+          resultReflowDockAudit.actionCount === 6 &&
           resultReflowDockAudit.rowCount === 2 &&
           resultReflowDockAudit.actionsInsideWidth &&
           resultReflowDockAudit.touchTargets.every(([width, height]) => width >= 44 && height >= 44),

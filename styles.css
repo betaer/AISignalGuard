@@ -2090,7 +2090,7 @@ body[data-app-stage="result"] .analysis-progress {
   justify-content: flex-start;
   gap: 9px;
   width: 148px;
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid rgba(117, 139, 91, 0.26);
   border-radius: 13px;
   background: rgba(251, 252, 245, 0.96);
@@ -2156,6 +2156,20 @@ body[data-app-stage="result"] .analysis-progress {
 
 .floating-share .floating-action-icon {
   color: var(--icon-yellow-ink);
+}
+
+.floating-github {
+  position: relative;
+  overflow: visible;
+  font-variant-numeric: tabular-nums;
+}
+
+.floating-github-icon {
+  color: var(--icon-green-ink);
+}
+
+.floating-github[data-star-state="loading"] .floating-github-label {
+  opacity: 0.62;
 }
 
 .floating-action-label {
@@ -2317,6 +2331,35 @@ body[data-app-stage="result"] .analysis-progress {
 
   .floating-action-label {
     display: none;
+  }
+
+  .floating-github .floating-github-label {
+    position: absolute;
+    top: -6px;
+    right: 0;
+    display: inline-grid;
+    min-width: 22px;
+    max-width: 46px;
+    height: 22px;
+    place-items: center;
+    overflow: visible;
+    border: 2px solid var(--paper);
+    border-radius: 999px;
+    background: #405535;
+    box-shadow: 0 3px 8px rgba(31, 48, 25, 0.2);
+    color: #fff;
+    font: 750 9px/1 var(--mono);
+    padding: 0 4px;
+    text-overflow: clip;
+  }
+
+  .floating-github-prefix {
+    display: none;
+  }
+
+  .floating-github[data-star-state="fallback"] .floating-github-label,
+  .floating-github[data-star-state="loading"] .floating-github-label {
+    background: #697064;
   }
 
   .floating-copy-ai,
@@ -4688,16 +4731,25 @@ body[data-app-stage="result"] .analysis-progress {
   body[data-app-stage="result"] .floating-actions {
     position: static;
     display: grid;
-    width: min(calc(100% - 28px), 244px);
-    grid-template-columns: repeat(5, 44px);
+    width: min(calc(100% - 28px), 294px);
+    grid-template-columns: repeat(6, 44px);
     justify-content: center;
-    gap: 6px;
-    margin: 12px auto 14px;
+    gap: 6px clamp(0px, calc((100vw - 292px) / 5), 6px);
+    margin: 16px auto 14px;
   }
 
   body[data-app-stage="result"] .floating-action {
     width: 44px;
     min-height: 44px;
+  }
+}
+
+@media (max-width: 291px) {
+  body[data-app-stage="result"] .floating-actions {
+    width: min(calc(100% - 28px), 220px);
+    grid-template-columns: repeat(3, 44px);
+    justify-content: center;
+    gap: 6px;
   }
 }
 
@@ -4709,12 +4761,6 @@ body[data-app-stage="result"] .analysis-progress {
 
   .brand-text {
     display: none;
-  }
-
-  body[data-app-stage="result"] .floating-actions {
-    width: min(calc(100% - 28px), 220px);
-    grid-template-columns: repeat(3, 44px);
-    justify-content: end;
   }
 }
 

@@ -4,6 +4,9 @@ import { analyzeIdentity } from "./identityAnalysis.js";
 (function () {
   "use strict";
 
+  var REPO = "betaer/AiSignalGuard";
+  var STAR_CACHE_KEY = "aisg-github-stars";
+  var STAR_CACHE_TTL_MS = 30 * 60 * 1000;
   var RING_CIRCUMFERENCE = 326.726;
   var NAV = [
     ["identity-result-root", "网络风险"],
@@ -7569,6 +7572,82 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     document.head.appendChild(script);
   }
 
+  function normalizeStarCount(value) {
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+      return null;
+    }
+    return value;
+  }
+
+  function renderStarCount(count, starState) {
+    var githubShortcut = $("#github-shortcut");
+    var starCount = $("#star-count");
+    if (!githubShortcut || !starCount) {
+      return;
+    }
+    var normalizedCount = normalizeStarCount(count);
+    var hasCount = normalizedCount !== null;
+    var label = hasCount ? "打开 GitHub 仓库，" + normalizedCount + " 个 Star" : "打开 GitHub 仓库";
+    starCount.textContent = hasCount ? String(normalizedCount) : "Star";
+    githubShortcut.dataset.starState = starState || (hasCount ? "loaded" : "fallback");
+    githubShortcut.setAttribute("aria-label", label);
+    githubShortcut.title = label;
+  }
+
+  function readCachedStars() {
+    try {
+      var cached = JSON.parse(window.localStorage.getItem(STAR_CACHE_KEY) || "null");
+      var count = normalizeStarCount(cached && cached.count);
+      var savedAt = Number(cached && cached.savedAt);
+      if (count === null || !Number.isFinite(savedAt) || savedAt <= 0) {
+        window.localStorage.removeItem(STAR_CACHE_KEY);
+        return null;
+      }
+      var age = Date.now() - savedAt;
+      if (age < 0 || age > STAR_CACHE_TTL_MS) {
+        window.localStorage.removeItem(STAR_CACHE_KEY);
+        return null;
+      }
+      return {
+        count: count
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeCachedStars(count) {
+    try {
+      window.localStorage.setItem(
+        STAR_CACHE_KEY,
+        JSON.stringify({
+          count: count,
+          savedAt: Date.now()
+        })
+      );
+    } catch (err) {}
+  }
+
+  function loadStars() {
+    var cached = readCachedStars();
+    if (cached) {
+      renderStarCount(cached.count, "cached");
+      return;
+    }
+    getJson("https://api.github.com/repos/" + REPO, 8000, false)
+      .then(function (repo) {
+        var count = normalizeStarCount(repo && repo.stargazers_count);
+        if (count === null) {
+          throw new Error("Invalid GitHub repository metadata");
+        }
+        writeCachedStars(count);
+        renderStarCount(count, "loaded");
+      })
+      .catch(function () {
+        renderStarCount(null, "fallback");
+      });
+  }
+
   function reapplyRegion() {
     // 口径只影响分类判定，本地重算即可，不重发任何网络请求。
     runLocalSignals(true);
@@ -7700,5 +7779,6 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     setAppStage("select");
     renderIdentitySelectionState();
     startIdentityAutoCountdown();
+    scheduleIdle(loadStars, 1800);
   });
 })();
