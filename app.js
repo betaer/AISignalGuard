@@ -47,6 +47,29 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     { id: "multi", label: "多源互证", icon: "score-icon-multi" }
   ];
 
+  var SCORE_SEGMENT_TARGETS = {
+    ip: { section: "sec-ip", row: "ip" },
+    identity: { section: "sec-identity", row: "" },
+    leak: { section: "sec-leak", row: "" },
+    conn: { section: "sec-conn", row: "" },
+    ai: { section: "sec-aipath", row: "" },
+    multi: { section: "sec-multi", row: "" }
+  };
+
+  var SCORE_UNCONFIRMED_ROW_TARGETS = {
+    identity: [
+      { section: "sec-ip", row: "consistency" },
+      { section: "sec-identity", row: "lang" },
+      { section: "sec-identity", row: "tz" },
+      { section: "sec-identity", row: "emoji" },
+      { section: "sec-identity", row: "font" }
+    ],
+    leak: [
+      { section: "sec-leak", row: "dns" },
+      { section: "sec-leak", row: "webrtc" }
+    ]
+  };
+
   var state = {
     appStage: "select",
     selectedIdentityId: "",
@@ -4816,19 +4839,68 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     return "";
   }
 
-  function openRiskTarget(sectionId, rowId) {
+  function riskNavigationElements(sectionId, rowId) {
+    var section = document.getElementById(sectionId);
+    var rowTarget =
+      (rowId && document.querySelector('[data-row="' + rowId.replace(/"/g, '\\"') + '"]')) ||
+      null;
+    return {
+      section: section,
+      row: rowTarget,
+      scroll: rowTarget || section,
+      focus:
+        rowTarget ||
+        (section && section.querySelector(":scope > .section-head .section-title")) ||
+        section
+    };
+  }
+
+  function focusRiskNavigationElement(element) {
+    if (!element || !element.focus) {
+      return;
+    }
+    if (!element.matches("button, a, input, select, textarea, [tabindex]")) {
+      element.setAttribute("tabindex", "-1");
+    }
+    element.focus({ preventScroll: true });
+  }
+
+  function activeRiskFocusTarget(active) {
+    if (!active || !active.matches) {
+      return null;
+    }
+    var row = active.matches("[data-row]") ? active : active.closest("[data-row]");
+    if (row && row.dataset.row) {
+      var rowSection = row.closest(".section");
+      return {
+        section: rowSection ? rowSection.id : "",
+        row: row.dataset.row
+      };
+    }
+    if (active.matches(".section-title")) {
+      var section = active.closest(".section");
+      return section ? { section: section.id, row: "" } : null;
+    }
+    return null;
+  }
+
+  function openRiskTarget(sectionId, rowId, updateHash) {
     if (rowId) {
       state.open[rowId] = true;
     }
     state.activeId = sectionId || state.activeId;
+    if (updateHash && sectionId) {
+      syncNavigationHash(sectionId, false);
+    }
     renderImmediate();
     window.requestAnimationFrame(function () {
-      var target =
-        (rowId && document.querySelector('[data-row="' + rowId.replace(/"/g, '\\"') + '"]')) ||
-        document.getElementById(sectionId);
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      var targets = riskNavigationElements(sectionId, rowId);
+      if (targets.scroll) {
+        var reducedMotion =
+          window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        targets.scroll.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
       }
+      focusRiskNavigationElement(targets.focus);
       updateActiveNav();
     });
   }
@@ -6115,6 +6187,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
   function renderNow() {
     state.renderScheduled = false;
     var active = document.activeElement;
+    var restoreRiskFocus = activeRiskFocusTarget(active);
     var restoreMultiIp =
       active && active.id === "multi-ip"
         ? { start: active.selectionStart, end: active.selectionEnd }
@@ -6159,6 +6232,9 @@ import { analyzeIdentity } from "./identityAnalysis.js";
           input.setSelectionRange(restoreMultiIp.start, restoreMultiIp.end);
         } catch (err) {}
       }
+    } else if (restoreRiskFocus) {
+      var riskTargets = riskNavigationElements(restoreRiskFocus.section, restoreRiskFocus.row);
+      focusRiskNavigationElement(riskTargets.focus);
     }
   }
 
@@ -6252,6 +6328,40 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     window.location.hash = nextHash;
   }
 
+  function scoreSegmentRiskTarget(segment) {
+    if (!segment || !SCORE_SEGMENT_TARGETS[segment.id]) {
+      return null;
+    }
+    var mapped = SCORE_SEGMENT_TARGETS[segment.id];
+    var unresolvedTargets = SCORE_UNCONFIRMED_ROW_TARGETS[segment.id] || [];
+    var unresolvedTarget = unresolvedTargets.find(function (target) {
+        var current = state.rows[target.row];
+        return !current || current.status === "pending" || current.status === "neutral";
+      });
+    return {
+      label: segment.name + "证据未确认",
+      section: unresolvedTarget ? unresolvedTarget.section : mapped.section,
+      row: unresolvedTarget ? unresolvedTarget.row : mapped.row || ""
+    };
+  }
+
+  function riskCountTargets(segments, items) {
+    var firstRed = items.find(function (item) {
+      return item.severity === "red";
+    });
+    var firstAmber = items.find(function (item) {
+      return item.severity === "amber";
+    });
+    var firstUnconfirmed = segments.find(function (segment) {
+      return segment.status === "neutral" || segment.status === "pending";
+    });
+    return {
+      red: firstRed || null,
+      amber: firstAmber || null,
+      unconfirmed: scoreSegmentRiskTarget(firstUnconfirmed)
+    };
+  }
+
   function networkRiskPresentation(segments, ready, riskItems) {
     var items = Array.isArray(riskItems) ? riskItems : collectRiskItems();
     var counts = items.reduce(
@@ -6262,9 +6372,10 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       },
       { red: 0, amber: 0, unconfirmed: 0 }
     );
-    counts.unconfirmed = segments.filter(function (segment) {
+    var unconfirmedSegments = segments.filter(function (segment) {
       return segment.status === "neutral" || segment.status === "pending";
-    }).length;
+    });
+    counts.unconfirmed = unconfirmedSegments.length;
     var label = !ready
       ? "检测中"
       : counts.red
@@ -6286,6 +6397,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
               ? "pending"
               : "green",
       counts: counts,
+      targets: riskCountTargets(segments, items),
       countText:
         "‼️ 高风险 " +
         counts.red +
@@ -6295,6 +6407,62 @@ import { analyzeIdentity } from "./identityAnalysis.js";
         counts.unconfirmed +
         " 项"
     };
+  }
+
+  function renderNetworkRiskCountGroup(definition, risk) {
+    var count = risk.counts[definition.tone];
+    var target = risk.targets[definition.tone];
+    var content =
+      renderStatusLabel(definition.symbol + " " + definition.label + " ") +
+      '<span class="network-risk-count-value">' +
+      escapeHtml(count) +
+      "</span> 项";
+    if (!count || !target || !target.section) {
+      return (
+        '<span class="network-risk-count-group network-risk-count-static" data-risk-count-group="' +
+        escapeHtml(definition.tone) +
+        '" data-risk-count-tone="' +
+        escapeHtml(definition.tone) +
+        '">' +
+        content +
+        "</span>"
+      );
+    }
+    var targetDetail = count > 1 ? "，定位到第一项：" : "，定位到：";
+    var accessibleLabel =
+      definition.label + "共 " + count + " 项" + targetDetail + target.label;
+    return (
+      '<a class="network-risk-count-group network-risk-count-link" href="#' +
+      escapeHtml(target.section) +
+      '" data-risk-count-group="' +
+      escapeHtml(definition.tone) +
+      '" data-risk-count-tone="' +
+      escapeHtml(definition.tone) +
+      '" data-risk-section="' +
+      escapeHtml(target.section) +
+      '" data-risk-row="' +
+      escapeHtml(target.row || "") +
+      '" aria-label="' +
+      escapeHtml(accessibleLabel) +
+      '" title="' +
+      escapeHtml(accessibleLabel) +
+      '">' +
+      content +
+      "</a>"
+    );
+  }
+
+  function renderNetworkRiskCounts(risk) {
+    var definitions = [
+      { tone: "red", symbol: "‼️", label: "高风险" },
+      { tone: "amber", symbol: "❗", label: "需留意" },
+      { tone: "unconfirmed", symbol: "⁉️", label: "未确认" }
+    ];
+    return definitions
+      .map(function (definition) {
+        return renderNetworkRiskCountGroup(definition, risk);
+      })
+      .join('<span class="network-risk-count-separator" aria-hidden="true"> / </span>');
   }
 
   function renderScore() {
@@ -6310,7 +6478,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       riskLabel.dataset.riskTone = risk.tone;
     }
     if (riskCounts) {
-      riskCounts.innerHTML = renderStatusLabel(risk.countText);
+      riskCounts.innerHTML = renderNetworkRiskCounts(risk);
     }
     $("#score-number").textContent = value;
     $("#score-status").textContent = ready ? "网络信号参考分" : "检测中";
@@ -7359,8 +7527,18 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       });
     });
     document.querySelectorAll("[data-risk-section]").forEach(function (button) {
-      button.addEventListener("click", function () {
-        openRiskTarget(button.dataset.riskSection, button.dataset.riskRow || "");
+      button.addEventListener("click", function (event) {
+        var isAnchor = button.matches('a[href^="#"]');
+        var shouldKeepNativeAnchorBehavior =
+          isAnchor &&
+          (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+        if (shouldKeepNativeAnchorBehavior) {
+          return;
+        }
+        if (isAnchor) {
+          event.preventDefault();
+        }
+        openRiskTarget(button.dataset.riskSection, button.dataset.riskRow || "", isAnchor);
       });
     });
     var input = $("#multi-ip");

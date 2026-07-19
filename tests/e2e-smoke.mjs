@@ -3287,6 +3287,211 @@ const scenarios = [
     },
   },
   {
+    name: "根首页风险摘要计数：未确认数字链接定位到对应评分分区",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({
+        locale: "en-US",
+        timezoneId: "America/Los_Angeles",
+        viewport: { width: 390, height: 700 },
+      });
+      await routeFixtures(page, base.origin, { allowedIpHosts: ["api.ipify.org"] });
+      await page.goto(base.href);
+      await waitForScore(page);
+
+      const audit = await page.locator("#network-risk-counts").evaluate((counts) => {
+        const countMatch = counts.textContent.match(/未确认\s+(\d+)\s+项/);
+        const link = counts.querySelector(
+          'a.network-risk-count-link[data-risk-count-tone="unconfirmed"]',
+        );
+        const firstNeutral = document.querySelector('[data-score-segment][data-status="neutral"]');
+        const sectionBySegment = {
+          ip: "sec-ip",
+          identity: "sec-identity",
+          leak: "sec-leak",
+          conn: "sec-conn",
+          ai: "sec-aipath",
+          multi: "sec-multi",
+        };
+        return {
+          count: Number(countMatch?.[1] ?? 0),
+          linkCount: counts.querySelectorAll(
+            'a.network-risk-count-link[data-risk-count-tone="unconfirmed"]',
+          ).length,
+          href: link?.getAttribute("href") || "",
+          section: link?.dataset.riskSection || "",
+          row: link?.dataset.riskRow || "",
+          ariaLabel: link?.getAttribute("aria-label") || "",
+          firstNeutralSegment: firstNeutral?.dataset.scoreSegment || "",
+          expectedSection: sectionBySegment[firstNeutral?.dataset.scoreSegment] || "",
+          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      ok(
+        "a positive unconfirmed count links to the first neutral score segment",
+        audit.count > 0 &&
+          audit.linkCount === 1 &&
+          audit.section === audit.expectedSection &&
+          audit.href === `#${audit.expectedSection}` &&
+          audit.ariaLabel.includes(`未确认共 ${audit.count} 项`) &&
+          (audit.count === 1 || audit.ariaLabel.includes("定位到第一项")) &&
+          audit.pageOverflow <= 1,
+        JSON.stringify(audit),
+      );
+
+      const unconfirmedLink = page.locator(
+        '#network-risk-counts a.network-risk-count-link[data-risk-count-tone="unconfirmed"]',
+      );
+      const hasUnconfirmedLink = (await unconfirmedLink.count()) === 1;
+      if (hasUnconfirmedLink) {
+        await unconfirmedLink.click();
+        await page.waitForFunction(() => {
+          const link = document.querySelector(
+            '#network-risk-counts a.network-risk-count-link[data-risk-count-tone="unconfirmed"]',
+          );
+          const section = document.getElementById(link?.dataset.riskSection || "");
+          const heading = section?.querySelector(":scope > .section-head .section-title");
+          const targetRect = heading?.getBoundingClientRect();
+          const topbarBottom = document.querySelector(".topbar")?.getBoundingClientRect().bottom || 0;
+          return (
+            Boolean(section) &&
+            window.location.hash === link.getAttribute("href") &&
+            document.activeElement === heading &&
+            Boolean(targetRect) &&
+            targetRect.top >= topbarBottom + 3 &&
+            targetRect.top < window.innerHeight
+          );
+        });
+      }
+      ok(
+        "the unconfirmed count reveals and focuses its mapped diagnostic section",
+        hasUnconfirmedLink &&
+          (await unconfirmedLink.evaluate((link) => {
+            const section = document.getElementById(link.dataset.riskSection || "");
+            const heading = section?.querySelector(":scope > .section-head .section-title");
+            const targetRect = heading?.getBoundingClientRect();
+            const topbarBottom = document.querySelector(".topbar")?.getBoundingClientRect().bottom || 0;
+            return (
+              window.location.hash === link.getAttribute("href") &&
+              document.activeElement === heading &&
+              Boolean(targetRect) &&
+              targetRect.top >= topbarBottom + 3 &&
+              targetRect.top < window.innerHeight
+            );
+          })),
+        JSON.stringify({ hasUnconfirmedLink, hash: new URL(page.url()).hash }),
+      );
+      await page.close();
+    },
+  },
+  {
+    name: "根首页风险摘要计数：身份未确认链接与实际证据分区一致",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({
+        locale: "en-US",
+        timezoneId: "America/Los_Angeles",
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+          "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        viewport: { width: 390, height: 700 },
+      });
+      await page.addInitScript(() => {
+        const proto = window.CanvasRenderingContext2D?.prototype;
+        if (!proto) return;
+        const nativeMeasureText = proto.measureText;
+        proto.measureText = function (text) {
+          if (String(text) === "mmmmmmmmmmlli中文测试") {
+            return { width: 100 };
+          }
+          return nativeMeasureText.apply(this, arguments);
+        };
+      });
+      await routeFixtures(page, base.origin, { allowedIpHosts: ["api.ipify.org"] });
+      await page.goto(base.href);
+      await waitForScore(page);
+
+      const audit = await page.locator("#network-risk-counts").evaluate((counts) => {
+        const identitySegment = document.querySelector('[data-score-segment="identity"]');
+        const link = counts.querySelector(
+          'a.network-risk-count-link[data-risk-count-tone="unconfirmed"]',
+        );
+        const row = link?.dataset.riskRow
+          ? document.querySelector(`[data-row="${link.dataset.riskRow}"]`)
+          : null;
+        return {
+          identityStatus: identitySegment?.dataset.status || "",
+          count: Number(link?.querySelector(".network-risk-count-value")?.textContent || 0),
+          href: link?.getAttribute("href") || "",
+          section: link?.dataset.riskSection || "",
+          row: link?.dataset.riskRow || "",
+          rowSection: row?.closest(".section")?.id || "",
+        };
+      });
+      ok(
+        "an unconfirmed identity segment links to the section that actually owns its first unresolved row",
+        audit.identityStatus === "neutral" &&
+          audit.count > 0 &&
+          audit.row === "consistency" &&
+          audit.section === "sec-ip" &&
+          audit.href === "#sec-ip" &&
+          audit.rowSection === audit.section,
+        JSON.stringify(audit),
+      );
+      await page.close();
+    },
+  },
+  {
+    name: "根首页风险摘要计数：异步结果更新后保留证据焦点",
+    async run({ browser, base, ok }) {
+      const page = await browser.newPage({ viewport: { width: 390, height: 700 } });
+      await routeFixtures(page, base.origin, {
+        serviceDelays: {
+          "status.claude.com": 5000,
+          "status.openai.com": 5000,
+        },
+      });
+      await page.goto(base.href);
+      await waitForScore(page);
+
+      const link = page.locator("#network-risk-counts a.network-risk-count-link").first();
+      const target = await link.evaluate((node) => ({
+        section: node.dataset.riskSection || "",
+        row: node.dataset.riskRow || "",
+      }));
+      await link.click();
+      await page.waitForFunction(
+        ({ section, row }) => {
+          const node =
+            (row && document.querySelector(`[data-row="${row}"]`)) || document.getElementById(section);
+          return document.activeElement === node;
+        },
+        target,
+      );
+      await page.waitForFunction(
+        () =>
+          Array.from(document.querySelectorAll("#sec-aistatus .status-link")).every(
+            (node) => !node.textContent.includes("读取中"),
+          ),
+        null,
+        { timeout: 10000 },
+      );
+      const focusAfterAsyncRender = await page.evaluate(({ section, row }) => {
+        const node =
+          (row && document.querySelector(`[data-row="${row}"]`)) || document.getElementById(section);
+        return {
+          focused: document.activeElement === node,
+          activeRow: document.activeElement?.dataset.row || "",
+          activeSection: document.activeElement?.closest?.(".section")?.id || "",
+        };
+      }, target);
+      ok(
+        "the linked evidence retains focus when a late AI status result rerenders diagnostics",
+        focusAfterAsyncRender.focused,
+        JSON.stringify({ target, focusAfterAsyncRender }),
+      );
+      await page.close();
+    },
+  },
+  {
     name: "IPv4-only 独立源：中国直连地址可快速显示并识别",
     async run({ browser, base, ok }) {
       const page = await browser.newPage();
@@ -6029,6 +6234,50 @@ const scenarios = [
         riskCounts: section.querySelector("#network-risk-counts")?.textContent.trim() || "",
         riskLabelHiddenIcons: section.querySelectorAll('#network-risk-label .semantic-status-icon[aria-hidden="true"]').length,
         riskCountsHiddenIcons: section.querySelectorAll('#network-risk-counts .semantic-status-icon[aria-hidden="true"]').length,
+        riskCountEntries: Array.from(
+          section.querySelectorAll("#network-risk-counts [data-risk-count-tone]"),
+          (entry) => {
+            const value = entry.querySelector(".network-risk-count-value");
+            const valueStyle = value ? getComputedStyle(value) : null;
+            const entryRect = entry.getBoundingClientRect();
+            return {
+              tag: entry.tagName,
+              tone: entry.dataset.riskCountTone || "",
+              wholeGroup: entry.hasAttribute("data-risk-count-group"),
+              count: Number(value?.textContent || -1),
+              href: entry.getAttribute("href") || "",
+              section: entry.dataset.riskSection || "",
+              row: entry.dataset.riskRow || "",
+              ariaLabel: entry.getAttribute("aria-label") || "",
+              tabIndex: entry.tabIndex,
+              valueDecoration: valueStyle?.textDecorationLine || "",
+              valueDecorationColor: valueStyle?.textDecorationColor || "",
+              valueDecorationThickness: valueStyle?.textDecorationThickness || "",
+              valueUnderlineOffset: valueStyle?.textUnderlineOffset || "",
+              entryDecoration: getComputedStyle(entry).textDecorationLine,
+              entryBorderBottomStyle: getComputedStyle(entry).borderBottomStyle,
+              targetWidth: entryRect.width,
+              targetHeight: entryRect.height,
+            };
+          },
+        ),
+        firstRiskByTone: Object.fromEntries(
+          ["red", "amber", "unconfirmed"].map((tone) => {
+            const chip = section.querySelector(`.score-risk-chip-${tone}`);
+            return [
+              tone,
+              chip
+                ? {
+                    section: chip.dataset.riskSection || "",
+                    row: chip.dataset.riskRow || "",
+                    text:
+                      chip.querySelector(":scope > span:last-child")?.textContent.replace(/\s+/g, " ").trim() ||
+                      "",
+                  }
+                : null,
+            ];
+          }),
+        ),
         redChips: section.querySelectorAll(".score-risk-chip-red").length,
         amberChips: section.querySelectorAll(".score-risk-chip-amber").length,
         unconfirmedChips: section.querySelectorAll(".score-risk-chip-unconfirmed").length,
@@ -6114,6 +6363,246 @@ const scenarios = [
             [advancedState.redChips, advancedState.amberChips, advancedState.unconfirmedChips].filter(Boolean).length,
         JSON.stringify(advancedState),
       );
+
+      const countByTone = {
+        red: Number(riskCountMatch?.[1] ?? -1),
+        amber: Number(riskCountMatch?.[2] ?? -1),
+        unconfirmed: Number(riskCountMatch?.[3] ?? -1),
+      };
+      const positiveCountTones = Object.entries(countByTone)
+        .filter(([, count]) => count > 0)
+        .map(([tone]) => tone)
+        .sort();
+      const linkedCountEntries = advancedState.riskCountEntries.filter((entry) => entry.tag === "A");
+      ok(
+        "only non-zero risk counts are underlined anchor links to their first matching signal",
+        linkedCountEntries.map((entry) => entry.tone).sort().join(",") === positiveCountTones.join(",") &&
+          advancedState.riskCountEntries.length === 3 &&
+          advancedState.riskCountEntries.every((entry) => {
+            const expectedCount = countByTone[entry.tone];
+            if (expectedCount === 0) {
+              return (
+                entry.tag === "SPAN" &&
+                entry.wholeGroup &&
+                entry.href === "" &&
+                entry.section === "" &&
+                entry.tabIndex < 0 &&
+                entry.valueDecoration === "none"
+              );
+            }
+            const firstRisk = advancedState.firstRiskByTone[entry.tone];
+            return (
+              entry.tag === "A" &&
+              entry.wholeGroup &&
+              entry.count === expectedCount &&
+              entry.href === `#${entry.section}` &&
+              Boolean(entry.section) &&
+              entry.tabIndex === 0 &&
+              entry.valueDecoration.includes("underline") &&
+              entry.valueDecorationThickness === "1px" &&
+              entry.valueUnderlineOffset === "4px" &&
+              !/rgba\([^)]*,\s*0(?:\.0+)?\)$/.test(entry.valueDecorationColor) &&
+              entry.entryDecoration === "none" &&
+              entry.entryBorderBottomStyle === "none" &&
+              entry.ariaLabel.includes(`共 ${expectedCount} 项`) &&
+              entry.ariaLabel.includes(
+                entry.tone === "red" ? "高风险" : entry.tone === "amber" ? "需留意" : "未确认",
+              ) &&
+              (expectedCount === 1 || entry.ariaLabel.includes("定位到第一项")) &&
+              (!firstRisk ||
+                (entry.section === firstRisk.section &&
+                  entry.row === firstRisk.row &&
+                  entry.ariaLabel.includes(firstRisk.text)))
+            );
+          }),
+        JSON.stringify({ countByTone, entries: advancedState.riskCountEntries }),
+      );
+
+      const amberCountLink = page.locator(
+        '#network-risk-counts a.network-risk-count-link[data-risk-count-tone="amber"]',
+      );
+      const hasAmberCountLink = (await amberCountLink.count()) === 1;
+      const modifiedClickAudit = hasAmberCountLink
+        ? await amberCountLink.evaluate(async (link) => {
+            async function existingHandlerPrevents(init) {
+              return new Promise((resolve) => {
+                const currentLink = document.querySelector(
+                  '#network-risk-counts a.network-risk-count-link[data-risk-count-tone="amber"]',
+                );
+                document.addEventListener(
+                  "click",
+                  (event) => {
+                    const preventedByProduct = event.defaultPrevented;
+                    event.preventDefault();
+                    resolve(preventedByProduct);
+                  },
+                  { once: true },
+                );
+                currentLink.dispatchEvent(
+                  new MouseEvent("click", {
+                    bubbles: true,
+                    cancelable: true,
+                    button: 0,
+                    ...init,
+                  }),
+                );
+              });
+            }
+            return {
+              ctrl: await existingHandlerPrevents({ ctrlKey: true }),
+              meta: await existingHandlerPrevents({ metaKey: true }),
+              shift: await existingHandlerPrevents({ shiftKey: true }),
+              alt: await existingHandlerPrevents({ altKey: true }),
+              middle: await existingHandlerPrevents({ button: 1 }),
+            };
+          })
+        : {};
+      ok(
+        "modified and middle-button risk count clicks retain native anchor semantics",
+        countByTone.amber === 0 ||
+          (hasAmberCountLink && Object.values(modifiedClickAudit).every((prevented) => !prevented)),
+        JSON.stringify(modifiedClickAudit),
+      );
+      if (countByTone.amber > 0 && hasAmberCountLink) {
+        await amberCountLink.click();
+        await page.waitForFunction(() => {
+          const link = document.querySelector(
+            '#network-risk-counts a.network-risk-count-link[data-risk-count-tone="amber"]',
+          );
+          const section = link?.dataset.riskSection || "";
+          const row = link?.dataset.riskRow || "";
+          const target =
+            (row && document.querySelector(`[data-row="${row}"]`)) || document.getElementById(section);
+          const rect = target?.getBoundingClientRect();
+          const topbarBottom = document.querySelector(".topbar")?.getBoundingClientRect().bottom || 0;
+          return (
+            Boolean(section) &&
+            window.location.hash === `#${section}` &&
+            (!row || document.querySelector(`[data-row-wrap="${row}"]`)?.classList.contains("is-open")) &&
+            document.activeElement === target &&
+            Boolean(rect) &&
+            rect.top >= topbarBottom + 3 &&
+            rect.top < window.innerHeight
+          );
+        });
+      }
+      ok(
+        "clicking the amber count opens its evidence and updates the page anchor",
+        countByTone.amber === 0 ||
+          (hasAmberCountLink && await page.evaluate(() => {
+            const link = document.querySelector(
+              '#network-risk-counts a.network-risk-count-link[data-risk-count-tone="amber"]',
+            );
+            const section = link?.dataset.riskSection || "";
+            const row = link?.dataset.riskRow || "";
+            const target =
+              (row && document.querySelector(`[data-row="${row}"]`)) || document.getElementById(section);
+            const rect = target?.getBoundingClientRect();
+            const topbarBottom = document.querySelector(".topbar")?.getBoundingClientRect().bottom || 0;
+            return (
+              Boolean(section) &&
+              window.location.hash === `#${section}` &&
+              (!row || document.querySelector(`[data-row-wrap="${row}"]`)?.classList.contains("is-open")) &&
+              Boolean(rect) &&
+              rect.top >= topbarBottom + 3 &&
+              rect.top < window.innerHeight
+            );
+          })),
+        JSON.stringify({ amber: countByTone.amber, hash: new URL(page.url()).hash }),
+      );
+
+      const redCountLink = page.locator(
+        '#network-risk-counts a.network-risk-count-link[data-risk-count-tone="red"]',
+      );
+      const hasRedCountLink = (await redCountLink.count()) === 1;
+      if (countByTone.red > 0 && hasRedCountLink) {
+        await redCountLink.focus();
+        await page.keyboard.press("Enter");
+        await page.waitForFunction(() => {
+          const link = document.querySelector(
+            '#network-risk-counts a.network-risk-count-link[data-risk-count-tone="red"]',
+          );
+          const section = link?.dataset.riskSection || "";
+          const row = link?.dataset.riskRow || "";
+          const target =
+            (row && document.querySelector(`[data-row="${row}"]`)) || document.getElementById(section);
+          const rect = target?.getBoundingClientRect();
+          const topbarBottom = document.querySelector(".topbar")?.getBoundingClientRect().bottom || 0;
+          return (
+            Boolean(section) &&
+            window.location.hash === link.getAttribute("href") &&
+            (!row || document.querySelector(`[data-row-wrap="${row}"]`)?.classList.contains("is-open")) &&
+            document.activeElement === target &&
+            Boolean(rect) &&
+            rect.top >= topbarBottom + 3 &&
+            rect.top < window.innerHeight
+          );
+        });
+      }
+      ok(
+        "keyboard activation follows the red count anchor",
+        countByTone.red === 0 ||
+          (hasRedCountLink && await redCountLink.evaluate((link) => {
+            const section = link.dataset.riskSection || "";
+            const row = link.dataset.riskRow || "";
+            const target =
+              (row && document.querySelector(`[data-row="${row}"]`)) || document.getElementById(section);
+            const rect = target?.getBoundingClientRect();
+            const topbarBottom = document.querySelector(".topbar")?.getBoundingClientRect().bottom || 0;
+            return (
+              window.location.hash === link.getAttribute("href") &&
+              (!row || document.querySelector(`[data-row-wrap="${row}"]`)?.classList.contains("is-open")) &&
+              document.activeElement === target &&
+              Boolean(rect) &&
+              rect.top >= topbarBottom + 3 &&
+              rect.top < window.innerHeight
+            );
+          })),
+        JSON.stringify({ red: countByTone.red, hash: new URL(page.url()).hash }),
+      );
+
+      const narrowRiskCounts = [];
+      for (const viewport of [390, 300]) {
+        await page.setViewportSize({ width: viewport, height: 700 });
+        narrowRiskCounts.push(await page.locator("#network-risk-counts").evaluate((counts) => {
+          const summaryRect = counts.closest(".network-risk-summary")?.getBoundingClientRect();
+          const groups = Array.from(counts.querySelectorAll("[data-risk-count-group]"));
+          return {
+            viewport: innerWidth,
+            pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            groupsSingleLine: groups.every((group) => group.getClientRects().length === 1),
+            groupsInsideSummary: groups.every((group) => {
+              const rect = group.getBoundingClientRect();
+              return (
+                Boolean(summaryRect) &&
+                rect.left >= summaryRect.left - 0.5 &&
+                rect.right <= summaryRect.right + 0.5
+              );
+            }),
+            linksInsideViewport: Array.from(counts.querySelectorAll(".network-risk-count-link")).every((link) => {
+              const rect = link.getBoundingClientRect();
+              return rect.left >= -0.5 && rect.right <= document.documentElement.clientWidth + 0.5;
+            }),
+            linksHaveTouchTargets: Array.from(counts.querySelectorAll(".network-risk-count-link")).every((link) => {
+              const rect = link.getBoundingClientRect();
+              return rect.width >= 44 && rect.height >= 44;
+            }),
+          };
+        }));
+      }
+      ok(
+        "risk count links remain inside a 300px viewport without page overflow",
+        narrowRiskCounts.every(
+          (audit) =>
+            audit.pageOverflow <= 1 &&
+            audit.groupsSingleLine &&
+            audit.groupsInsideSummary &&
+            audit.linksInsideViewport &&
+            audit.linksHaveTouchTargets,
+        ),
+        JSON.stringify(narrowRiskCounts),
+      );
+      await page.setViewportSize({ width: 1280, height: 900 });
 
       const firstSignalId = embeddedSignals[0].id;
       await page.locator(`.identity-signal-card[data-signal-id="${firstSignalId}"] > summary`).click();
@@ -6258,6 +6747,9 @@ const scenarios = [
       const legacyHashAudit = async (hash) => {
         await page.evaluate((nextHash) => {
           document.documentElement.style.scrollBehavior = "auto";
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
           history.replaceState(null, "", "#sec-trace");
           location.hash = nextHash;
         }, hash);

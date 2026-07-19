@@ -4119,6 +4119,66 @@ body[data-app-stage="result"] .analysis-progress {
   font: 10px/1.45 var(--mono);
 }
 
+#network-risk-counts {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px 4px;
+}
+
+.network-risk-count-group,
+.network-risk-count-link,
+.network-risk-count-static {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.network-risk-count-separator {
+  color: var(--muted-2);
+}
+
+.network-risk-count-link,
+.network-risk-count-link:hover {
+  border-bottom: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.network-risk-count-link .network-risk-count-value {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.network-risk-count-link[data-risk-count-tone="red"] .network-risk-count-value {
+  text-decoration-color: rgba(150, 56, 47, 0.6);
+}
+
+.network-risk-count-link[data-risk-count-tone="amber"] .network-risk-count-value {
+  text-decoration-color: rgba(123, 76, 10, 0.6);
+}
+
+.network-risk-count-link[data-risk-count-tone="unconfirmed"] .network-risk-count-value {
+  text-decoration-color: rgba(89, 89, 82, 0.58);
+}
+
+.network-risk-count-link[data-risk-count-tone="red"]:hover .network-risk-count-value {
+  color: var(--status-red-ink);
+}
+
+.network-risk-count-link[data-risk-count-tone="amber"]:hover .network-risk-count-value {
+  color: var(--status-amber-ink);
+}
+
+.network-risk-count-link[data-risk-count-tone="unconfirmed"]:hover .network-risk-count-value {
+  color: var(--ink-2);
+}
+
 .network-risk-summary-result > .network-risk-score-note {
   color: #77776f;
 }
@@ -4126,6 +4186,10 @@ body[data-app-stage="result"] .analysis-progress {
 .network-risk-summary-result .identity-reselect {
   min-height: 32px;
   margin-top: 2px;
+}
+
+.row-head[data-row] {
+  scroll-margin-top: 100px;
 }
 
 .network-risk-body {
@@ -4193,6 +4257,15 @@ body[data-app-stage="result"] .analysis-progress {
   .network-risk-summary-result {
     justify-items: start;
     text-align: left;
+  }
+
+  #network-risk-counts {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .network-risk-count-group {
+    min-height: 44px;
   }
 
   .network-risk-summary-result .identity-reselect {
@@ -4524,7 +4597,7 @@ body[data-app-stage="result"] .analysis-progress {
     align-items: center;
     justify-content: flex-start;
     gap: 3px 8px;
-    margin-top: 6px;
+    margin-top: 0;
     text-align: left;
   }
 
