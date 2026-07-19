@@ -350,12 +350,6 @@ import { analyzeIdentity } from "../identityAnalysis.js";
       host: "registry.npmjs.org",
       probeUrl: "https://registry.npmjs.org/-/ping",
       mode: "cors"
-    },
-    pypi: {
-      serviceId: "pypi",
-      label: "PyPI",
-      host: "pypi.org",
-      probeUrl: "https://pypi.org/static/images/logo-small.2a411bc6.svg"
     }
   };
 

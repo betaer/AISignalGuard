@@ -17,7 +17,7 @@
 - 卡片描述：面向国际 AI 服务的常见使用环境。
 - 重点信号：AI 服务路径、ChatGPT / Claude、Gemini / Perplexity、网络信誉、DNS / WebRTC。
 - 结果页目标名称：国际 AI 服务用户。
-- 评分以 ChatGPT、OpenAI、Claude、Gemini、Perplexity 对应产品域名的浏览器可达性为核心。官方状态页、通用静态资源以及 Cursor、GitHub、npm、PyPI 等补充证据不参与评分，相关检测能力仍保留在产品的网络检测模块中。
+- 评分以 ChatGPT、OpenAI、Claude、Gemini、Perplexity 对应产品域名的浏览器可达性为核心。官方状态页、通用静态资源以及 Cursor、GitHub、npm 等补充证据不参与评分，相关检测能力仍保留在产品的网络检测模块中。
 
 ### 自媒体创作者
 

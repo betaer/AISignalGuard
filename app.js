@@ -184,7 +184,9 @@ import { analyzeIdentity } from "./identityAnalysis.js";
         {
           label: "Wikipedia.org",
           host: "wikipedia.org",
-          probeUrl: "https://www.wikipedia.org/static/favicon/wikipedia.ico"
+          probeUrl: "https://www.wikipedia.org/static/favicon/wikipedia.ico",
+          softFail: true,
+          failStatus: "未确认"
         }
       ]
     },
@@ -372,12 +374,6 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       host: "registry.npmjs.org",
       probeUrl: "https://registry.npmjs.org/-/ping",
       mode: "cors"
-    },
-    pypi: {
-      serviceId: "pypi",
-      label: "PyPI.org",
-      host: "pypi.org",
-      probeUrl: "https://pypi.org/static/images/logo-small.2a411bc6.svg"
     }
   };
 
@@ -392,7 +388,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
 
   Object.keys(IDENTITY_SERVICE_CATALOG).forEach(function (serviceId) {
     IDENTITY_SERVICE_CATALOG[serviceId].softFail = true;
-    IDENTITY_SERVICE_CATALOG[serviceId].failStatus = "浏览器受限 / 未确认";
+    IDENTITY_SERVICE_CATALOG[serviceId].failStatus = "未确认";
   });
 
   var aiTargets = [
@@ -1405,7 +1401,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
         }
         if (item.code === "limited") {
           return item.label + "：" +
-            (/^官方备用资源/.test(item.status || "") ? item.status : "已连接（响应状态受限）");
+            (/^官方备用资源/.test(item.status || "") ? item.status : "有响应（HTTP 详情不可读）");
         }
         return item.label + "：" + (item.status || "未确认");
       })
@@ -1419,12 +1415,12 @@ import { analyzeIdentity } from "./identityAnalysis.js";
       );
     }
     if (reached.length) {
-      return identitySignal("partial", 0.68, evidence + "；部分项目受浏览器或网络策略限制", "目标服务可达性探测");
+      return identitySignal("partial", 0.68, evidence + "；部分项目仍未确认", "目标服务可达性探测");
     }
     if (explicitBad.length && !unresolved.length) {
       return identitySignal("mismatch", 0.62, evidence + "；仍需区分网络限制与服务状态", "目标服务可达性探测");
     }
-    return unknownIdentitySignal(evidence + "；浏览器限制下无法据此判断服务不可用", "目标服务可达性探测");
+    return unknownIdentitySignal(evidence + "；当前浏览器未取得可判断结果，不能据此认定服务不可用", "目标服务可达性探测");
   }
 
   function buildIdentitySignals(profile) {
@@ -3561,7 +3557,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
           resolve({
             code: "bad",
             status:
-              (result.viaFallback ? "官方备用资源 · " : "已连接 · ") +
+              (result.viaFallback ? "官方备用资源 · " : "") +
               "HTTP " +
               result.httpStatus +
               " · 服务响应异常 · " +
@@ -3574,13 +3570,13 @@ import { analyzeIdentity } from "./identityAnalysis.js";
           if (result.viaFallback) {
             resolve({
               code: "limited",
-              status: "官方备用资源" + (result.confirmed ? "可达 · " : "已连接 · 状态受限 · ") + elapsed + "ms"
+              status: "官方备用资源" + (result.confirmed ? "可达 · " : "有响应 · ") + elapsed + "ms"
             });
             return;
           }
           resolve({
             code: result.confirmed ? "ok" : "limited",
-            status: (result.confirmed ? "可达 · " : "已连接 · 状态受限 · ") + elapsed + "ms"
+            status: (result.confirmed ? "可达 · " : "有响应 · ") + elapsed + "ms"
           });
           return;
         }
@@ -5465,8 +5461,12 @@ import { analyzeIdentity } from "./identityAnalysis.js";
     });
     if (aiConnGroup) {
       aiConnGroup.sites.forEach(function (site) {
-        if (site.code !== "ok") {
-          limitations.push(site.host + " 连通性：" + site.status + "；浏览器跨域或网络策略限制，不能据此判断服务不可用。");
+        if (site.code === "limited") {
+          limitations.push(
+            site.host + " 连通性：" + site.status + "；浏览器收到跨站响应，但无法读取 HTTP 详情，不代表服务受限或业务功能可用。"
+          );
+        } else if (site.code !== "ok") {
+          limitations.push(site.host + " 连通性：" + site.status + "；当前浏览器未取得可判断结果，不能据此认定服务不可用。");
         }
       });
     }
@@ -6810,7 +6810,7 @@ import { analyzeIdentity } from "./identityAnalysis.js";
           );
         })
         .join("") +
-      '<p class="conn-note">浏览器探针只发起只读 GET 请求，不读取业务内容、不带 referrer。“可达”表示官方端点返回可确认的 2xx；“已连接 · 状态受限”表示跨站请求已建立，但浏览器无法读取 HTTP 状态；“服务响应异常”表示端点返回了可读取的非 2xx。Nms 是本轮探针的连接到响应头耗时；若启用备用端点，则计至其终态。该耗时包含 DNS、TLS、服务端与浏览器调度，不是 Ping，也不是完整下载耗时；结果不代表区域解锁、账号或支付功能。大陆探针只依据全球站点 · 常被墙与中国站点的连接结果，其他目标服务仅用于环境分析。</p></div></div></section>'
+      '<p class="conn-note">浏览器探针只发起只读 GET 请求，不读取业务内容、不带 referrer。“可达”表示官方端点返回可确认的 2xx；“有响应”表示浏览器收到了跨站响应，但受浏览器跨域安全规则影响，HTTP 状态和响应内容不可见，这不代表服务受限；“未确认”表示浏览器没有取得可判断结果，也不等同于不可达；“服务响应异常”表示端点返回了可读取的非 2xx。Nms 是本轮探针从发起请求到收到响应头的耗时；若启用备用端点，则计至其终态。该耗时包含 DNS、TLS、服务端与浏览器调度，不是 Ping，也不是完整下载耗时；结果不代表区域解锁、账号或支付功能。大陆探针只依据全球站点 · 常被墙与中国站点的连接结果，其他目标服务仅用于环境分析。</p></div></div></section>'
     );
   }
 

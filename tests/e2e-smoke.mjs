@@ -2177,7 +2177,8 @@ const scenarios = [
       );
       ok(
         "supplemental AI tools remain visible in connectivity diagnostics",
-        ["Cursor.com", "GitHub.com", "registry.npmjs.org", "PyPI.org"].every((label) => connectivityText.includes(label)),
+        ["Cursor.com", "GitHub.com", "registry.npmjs.org"].every((label) => connectivityText.includes(label)) &&
+          !connectivityText.includes("PyPI.org"),
         connectivityText.slice(0, 400),
       );
       await page.close();
@@ -2222,7 +2223,8 @@ const scenarios = [
       const connectivityText = await page.locator("#sec-conn").innerText();
       ok(
         "successful status and supplemental tool probes cannot replace failed core AI products",
-        ["Cursor.com", "GitHub.com", "registry.npmjs.org", "PyPI.org"].every((label) => connectivityText.includes(label)) &&
+        ["Cursor.com", "GitHub.com", "registry.npmjs.org"].every((label) => connectivityText.includes(label)) &&
+          !connectivityText.includes("PyPI.org") &&
           (await page.locator("#identity-match-score, .identity-match-score").count()) === 0 &&
           resultText.includes("尚未确认") &&
           !resultText.includes("证据收集中"),
@@ -4007,7 +4009,7 @@ const scenarios = [
       const page = await browser.newPage();
       const requests = [];
       page.on("request", (request) => requests.push(request.url()));
-      await routeFixtures(page, base.origin);
+      await routeFixtures(page, base.origin, { blockedServiceHosts: ["www.wikipedia.org"] });
       await page.goto(base.href);
       await waitForScore(page);
       await page.waitForFunction(
@@ -4040,8 +4042,16 @@ const scenarios = [
       const terminalStatuses = Object.values(audit.groups)
         .flat()
         .every((item) =>
-          /^可达 · \d+ms$|^已连接 · 状态受限 · \d+ms$|^官方备用资源(?:可达|已连接 · 状态受限) · \d+ms$|^(?:已连接 · |官方备用资源 · )HTTP \d+ · 服务响应异常 · \d+ms$|^浏览器受限 \/ 未确认$|^未确认$/.test(item.status),
+          /^可达 · \d+ms$|^有响应 · \d+ms$|^官方备用资源(?:可达|有响应) · \d+ms$|^(?:官方备用资源 · )?HTTP \d+ · 服务响应异常 · \d+ms$|^未确认$/.test(item.status),
         );
+
+      ok(
+        "opaque cross-origin responses use a concise connected label without implying the service is restricted",
+        !Object.values(audit.groups).flat().some((item) => item.status.includes("状态受限")) &&
+          audit.note.includes("“有响应”表示浏览器收到了跨站响应") &&
+          audit.note.includes("不代表服务受限"),
+        JSON.stringify(audit),
+      );
 
       ok(
         "generic connectivity group keeps Google and YouTube, adds WhatsApp and Reddit, and removes ChatGPT",
@@ -4068,10 +4078,15 @@ const scenarios = [
           labels("中国站点").join(",") === "Baidu.com,QQ.com,TaoBao.com,BiliBili.com",
         JSON.stringify({ global: labels("全球站点 · 常被墙"), china: labels("中国站点") }),
       );
-      ok("all connectivity cards reach a terminal latency or restricted state", terminalStatuses, JSON.stringify(audit.groups));
+      ok(
+        "an unreadable standalone global probe remains unconfirmed rather than being called unreachable",
+        (audit.groups["全球站点 · 常被墙"] || []).find((item) => item.label === "Wikipedia.org")?.status === "未确认",
+        JSON.stringify(audit.groups["全球站点 · 常被墙"] || []),
+      );
+      ok("all connectivity cards reach a terminal measured or unconfirmed state", terminalStatuses, JSON.stringify(audit.groups));
       ok(
         "connectivity note defines browser request timing and its limits",
-        /连接到响应头耗时/.test(audit.note) && /不代表区域解锁、账号或支付功能/.test(audit.note),
+        /从发起请求到收到响应头的耗时/.test(audit.note) && /不代表区域解锁、账号或支付功能/.test(audit.note),
         audit.note,
       );
 
@@ -4115,6 +4130,15 @@ const scenarios = [
         uncachedServiceRequests.length > 0 && uncachedServiceRequests.every((item) => !item.cacheBust),
         JSON.stringify(uncachedServiceRequests),
       );
+      ok(
+        "removed PyPI probe is neither rendered nor requested",
+        !Object.values(audit.groups).flat().some((item) => item.label === "PyPI.org") &&
+          !requests.some((requestUrl) => new URL(requestUrl).hostname === "pypi.org"),
+        JSON.stringify({
+          labels: Object.values(audit.groups).flat().map((item) => item.label),
+          requests: requests.filter((requestUrl) => new URL(requestUrl).hostname === "pypi.org"),
+        }),
+      );
       await page.setViewportSize({ width: 300, height: 700 });
       const mobileAudit = await page.locator("#sec-conn").evaluate((section) => ({
         overflow: document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth,
@@ -4131,7 +4155,7 @@ const scenarios = [
     },
   },
   {
-    name: "服务探针语义：延迟成功与浏览器受限保持可区分",
+    name: "服务探针语义：延迟成功与未确认保持可区分",
     async run({ browser, base, ok }) {
       const page = await browser.newPage();
       await routeFixtures(page, base.origin, {
@@ -4166,14 +4190,14 @@ const scenarios = [
         JSON.stringify(statuses),
       );
       ok(
-        "blocked no-cors service remains restricted rather than being called unreachable",
-        statuses["PayPal.com"] === "浏览器受限 / 未确认",
+        "blocked no-cors service remains unconfirmed rather than being called unreachable",
+        statuses["PayPal.com"] === "未确认",
         JSON.stringify(statuses),
       );
       ok(
         "mixed commerce reachability becomes a partial identity signal with explicit evidence",
         commerceSignal.status === "partial" && /Stripe\.com：浏览器可达/.test(commerceSignal.evidence) &&
-          /PayPal\.com：浏览器受限 \/ 未确认/.test(commerceSignal.evidence),
+          /PayPal\.com：未确认/.test(commerceSignal.evidence),
         JSON.stringify(commerceSignal),
       );
       await page.close();
@@ -4189,7 +4213,6 @@ const scenarios = [
           "www.cursor.com": 10000,
           "github.com": 10000,
           "registry.npmjs.org": 10000,
-          "pypi.org": 10000,
         },
       });
       await page.goto(base.href);
@@ -4200,12 +4223,12 @@ const scenarios = [
       const elapsed = Date.now() - startedAt;
       const supplementalStates = await page.locator("#sec-conn .conn-card").evaluateAll((cards) =>
         cards
-          .filter((card) => ["cursor", "github", "npm", "pypi"].includes(card.dataset.serviceId || ""))
+          .filter((card) => ["cursor", "github", "npm"].includes(card.dataset.serviceId || ""))
           .map((card) => card.querySelector(".conn-card-status")?.textContent.trim() || ""),
       );
       ok(
         "AI core services can complete the result while supplemental developer tools remain in flight",
-        elapsed < 8000 && supplementalStates.length === 4 && supplementalStates.some((status) => status === "检测中"),
+        elapsed < 8000 && supplementalStates.length === 3 && supplementalStates.some((status) => status === "检测中"),
         `elapsed=${elapsed}ms; supplemental=${supplementalStates.join(",")}`,
       );
       await page.close();
@@ -5081,7 +5104,7 @@ const scenarios = [
       const cardText = await stripeCard.innerText();
       ok(
         "a readable HTTP failure remains an explicit service response error",
-        /已连接 · HTTP 503 · 服务响应异常 · \d+ms/.test(cardText) &&
+        /HTTP 503 · 服务响应异常 · \d+ms/.test(cardText) &&
           !/浏览器受限|状态受限|可达/.test(cardText),
         cardText,
       );

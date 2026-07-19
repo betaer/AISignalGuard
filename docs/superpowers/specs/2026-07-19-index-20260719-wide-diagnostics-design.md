@@ -44,11 +44,11 @@
 - 通用数字身份分析：`Google.com`、`YouTube.com`、`WhatsApp.com`、`Reddit.com`；移除 ChatGPT。
 - 自媒体创作者：`TikTok.com`、`YouTube.com`、`Instagram.com`、`X.com`，同时保留画像评分需要的广告平台探针。
 - 跨境商家：`Shopify.com`、`Amazon.com`、`PayPal.com`、`Stripe.com`。
-- AI 用户：继续展示 AI 服务与补充工具探针；只有 ChatGPT、OpenAI、Claude、Gemini、Perplexity 五项核心服务阻塞身份结论，Cursor、GitHub、npm、PyPI 作为后台补充项，不延迟正式结果。
+- AI 用户：继续展示 AI 服务与补充工具探针；只有 ChatGPT、OpenAI、Claude、Gemini、Perplexity 五项核心服务阻塞身份结论，Cursor、GitHub、npm 作为后台补充项，不延迟正式结果。
 - 全球站点与中国站点补齐面向用户的规范域名写法，例如 `Google.com`、`QQ.com`、`BiliBili.com`、`Baidu.com`、`TaoBao.com`。
 - 所有服务均使用浏览器只读 GET 探针，不接入付费接口、不携带账号凭据、不读取业务正文；使用三个站点 worker，并为主探针切换官方备用端点预留一个网络槽，使浏览器层峰值仍不超过四路。当前画像和大陆连通判定所需服务优先执行；运行中禁用“重测”，连续激活也只保留一个 worker 池，避免叠加第三方请求。
-- 可读取 CORS 2xx 的结果显示“可达 · Nms”；opaque 跨站响应显示“已连接 · 状态受限 · Nms”，避免把无法读取的 HTTP 状态误报为已确认 2xx。
-- 可读取的 CORS 非 2xx 显示“已连接 · HTTP NNN · 服务响应异常 · Nms”，保留已知服务故障，不降级成“浏览器受限”，也不继续 fallback 掩盖故障。
+- 可读取 CORS 2xx 的结果显示“可达 · Nms”；opaque 跨站响应显示“有响应 · Nms”，表示浏览器收到响应但无法读取 HTTP 详情，不代表服务、账号或地区访问受限。
+- 可读取的 CORS 非 2xx 显示“HTTP NNN · 服务响应异常 · Nms”，保留已知服务故障，不降级成“未确认”，也不继续 fallback 掩盖故障。
 - Nms 是浏览器从发起请求到取得响应头的耗时；如果启用备用端点，则计至备用端点终态。取得所需信号后立即中止未读取的正文传输。该耗时包含 DNS、TLS、服务端响应与浏览器调度，不是完整下载耗时，也不等同于 ICMP Ping，更不代表区域解锁、账号或支付能力。
 - 探针使用 `cache: no-store`，不追加随机缓存穿透参数，避免人为制造 CDN 缓存未命中并扭曲耗时。
 - 主地址优先使用标签所展示服务的同域官方轻量页面或静态资源；只有网络、CORS 或超时导致主探针无法取得响应时才尝试官方备用静态资源，并在结果中明确标注“官方备用资源”。
